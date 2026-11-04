@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FreeNote 视觉设计稿</title>
+<style>
+  :root{
+    --bg:#e9e5dc; --paper:#fbfaf6; --panel:#f7f4ed; --panel-deep:#f0ece3;
+    --ink:#24302c; --muted:#7d857f; --faint:#a8ada6; --line:#dfdbd1;
+    --accent:#526d5e; --accent-soft:#e6ede7; --warm:#b78662; --danger:#b65d58;
+    --shadow:0 20px 55px rgba(52,45,34,.13);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif}
+  body{padding:28px}
+  button,input{font:inherit}
+  .gallery{display:flex;flex-direction:column;gap:34px;align-items:center}
+  .artboard{position:relative;width:1180px;height:820px;overflow:hidden;border-radius:26px;background:var(--paper);box-shadow:var(--shadow);isolation:isolate;flex:none}
+  body.single{padding:0;background:var(--bg)}
+  body.single .gallery{gap:0}
+  body.single .artboard{display:none;border-radius:0;box-shadow:none}
+  body.single .artboard.active{display:block}
+  svg{display:block}
+  .rail{width:96px;height:100%;padding:22px 12px 18px;background:#f2eee6;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:26px;position:absolute;left:0;top:0;z-index:5}
+  .brand{display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--accent)}
+  .brand-mark{width:42px;height:42px;border-radius:13px;background:var(--accent);color:#fff;display:grid;place-items:center;font:600 20px/1 "Songti SC",serif;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+  .brand-name{font-size:10px;letter-spacing:.08em;font-weight:600;color:#657069}
+  .nav{display:flex;flex-direction:column;gap:9px;width:100%}
+  .nav-item{height:70px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:#778078;font-size:11px}
+  .nav-item svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .nav-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .rail-bottom{margin-top:auto;display:flex;flex-direction:column;gap:12px;align-items:center;color:#7d857f}
+  .rail-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center}
+  .rail-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .rail-icon:hover{background:#e9e5dc}
+  .list-pane{position:absolute;left:96px;top:0;bottom:0;width:316px;background:var(--panel);border-right:1px solid var(--line);padding:33px 22px 24px;z-index:3}
+  .pane-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+  .pane-head h1{font:600 26px/1.25 "Songti SC","STSong",serif;margin:0;letter-spacing:.02em}
+  .circle-btn{width:36px;height:36px;border:0;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;box-shadow:0 5px 14px rgba(82,109,94,.22)}
+  .circle-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round}
+  .search{height:38px;border:1px solid #e3ded5;background:#fcfbf8;border-radius:12px;display:flex;align-items:center;gap:9px;padding:0 12px;color:#9da29c;font-size:13px;margin-bottom:16px}
+  .search svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8}
+  .chips{display:flex;gap:8px;margin-bottom:18px}
+  .chip{height:29px;padding:0 12px;border-radius:20px;display:grid;place-items:center;background:#eeebe3;color:#7c837d;font-size:12px}
+  .chip.active{background:var(--ink);color:#fff}
+  .note-list{display:flex;flex-direction:column;gap:10px}
+  .note-card{position:relative;padding:14px 14px 13px 17px;border-radius:15px;background:transparent;border:1px solid transparent}
+  .note-card:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:4px;background:#d8d2c7}
+  .note-card.active{background:#fffdfa;border-color:#e7e1d7;box-shadow:0 6px 18px rgba(67,57,42,.05)}
+  .note-card.active:before{background:var(--accent)}
+  .note-card h3{font-size:14px;margin:0 0 8px;font-weight:600;line-height:1.45}
+  .note-card p{margin:0;color:#8c928c;font-size:12px;line-height:1.55;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note-meta{display:flex;justify-content:space-between;margin-top:9px;font-size:10px;color:#a5aaa4}
+  .tag-dot{width:7px;height:7px;border-radius:50%;background:var(--warm);display:inline-block;margin-right:6px}
+  .workspace{position:absolute;left:412px;right:0;top:0;bottom:0;background:#f9f7f1;display:flex;flex-direction:column}
+  .topbar{height:78px;padding:0 30px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(222,216,205,.8);background:rgba(251,250,246,.86);backdrop-filter:blur(8px);z-index:4}
+  .doc-title{display:flex;align-items:center;gap:14px;min-width:0}
+  .doc-title h2{font:600 18px/1.3 "Songti SC",serif;margin:0;white-space:nowrap}
+  .doc-title span{font-size:11px;color:#9aa09a;white-space:nowrap}
+  .top-actions{display:flex;align-items:center;gap:9px}
+  .action-btn{height:36px;padding:0 13px;border:1px solid #ded9cf;background:#fffdfa;border-radius:11px;display:flex;align-items:center;gap:7px;color:#58625c;font-size:12px}
+  .action-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .icon-btn{width:36px;height:36px;border-radius:11px;border:1px solid #ded9cf;background:#fffdfa;display:grid;place-items:center;color:#58625c}
+  .icon-btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .canvas-stage{position:relative;flex:1;overflow:hidden;background:radial-gradient(circle at 50% 35%,#fbfaf6 0,#f4f1e9 72%,#eeeae1 100%)}
+  .page-meta{position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;color:#9da29d;background:rgba(255,253,249,.82);border:1px solid #e8e2d8;border-radius:20px;padding:6px 11px;z-index:4}
+  .canvas{position:absolute;left:54px;right:54px;top:54px;bottom:56px;background:#fffefb;border:1px solid #e5dfd4;border-radius:8px;box-shadow:0 10px 32px rgba(76,64,45,.07);overflow:visible}
+  .dot-grid{position:absolute;inset:0;background-image:radial-gradient(#ddd8ce 1px,transparent 1px);background-size:22px 22px;opacity:.64}
+  .paper-note{position:absolute;font-family:"KaiTi","STKaiti",serif;color:#2f3b36}
+  .title-hand{left:64px;top:55px;font-size:34px;transform:rotate(-2deg);letter-spacing:.06em}
+  .sub-hand{left:70px;top:104px;font-size:16px;color:#889088;transform:rotate(-1deg)}
+  .hand-body{position:absolute;left:68px;top:155px;width:390px;font-family:"KaiTi","STKaiti",serif;font-size:21px;line-height:1.85;color:#35423c;transform:rotate(-.8deg)}
+  .hand-body b{font-weight:400;color:var(--accent)}
+  .mini-sketch{position:absolute;right:64px;top:82px;width:310px;height:260px;border:1px solid #ded8cc;border-radius:160px 160px 30px 30px;padding:25px 26px;background:#fbf9f2;transform:rotate(1.2deg)}
+  .mini-sketch h4{font-family:"KaiTi",serif;font-size:18px;font-weight:400;margin:0 0 14px;color:#4c5b53}
+  .mini-sketch p{font-size:12px;line-height:1.8;color:#7f887f;margin:0}
+  .mini-sketch .tape{position:absolute;width:76px;height:22px;background:rgba(201,186,153,.28);top:-10px;left:115px;transform:rotate(-2deg)}
+  .ink-stroke{position:absolute;right:70px;bottom:78px;width:340px;height:190px;opacity:.94}
+  .page-tabs{position:absolute;right:-19px;top:56px;display:flex;flex-direction:column;gap:8px}
+  .page-tab{width:38px;height:52px;border:1px solid #e3ddd2;background:#fbfaf6;border-radius:5px;display:grid;place-items:center;font-size:10px;color:#9ba09a}
+  .page-tab.active{border-color:var(--accent);color:var(--accent);background:#eef3ef}
+  .toolbar{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);height:54px;padding:6px;border-radius:17px;background:rgba(255,253,249,.96);border:1px solid #ddd7cc;box-shadow:0 10px 28px rgba(49,43,34,.12);display:flex;align-items:center;gap:5px;z-index:6}
+  .tool{height:41px;min-width:41px;border-radius:12px;display:flex;align-items:center;justify-content:center;gap:5px;padding:0 10px;color:#647069;font-size:11px}
+  .tool svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .tool.active{background:var(--accent);color:#fff}
+  .tool.pen{padding:0 13px}
+  .pen-dot{width:10px;height:10px;border-radius:50%;background:#2e3c36;border:2px solid rgba(255,255,255,.65)}
+  .sep{height:26px;width:1px;background:#e2ddd3;margin:0 3px}
+  .zoom-status{position:absolute;left:20px;bottom:20px;font-size:10px;color:#9da29d;background:rgba(255,253,249,.86);padding:6px 9px;border-radius:8px;border:1px solid #e7e1d7}
+  .selection-box{position:absolute;right:100px;bottom:45px;width:212px;height:100px;border:1.5px dashed rgba(82,109,94,.7);border-radius:8px}
+  .selection-box span{position:absolute;right:5px;top:5px;font-size:9px;color:var(--accent);background:#f1f5f2;padding:3px 6px;border-radius:5px}
+
+  /* bookshelf */
+  .main-pane{position:absolute;left:96px;right:0;top:0;bottom:0;background:#faf8f2;padding:32px 44px 34px}
+  .page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+  .page-header h1{font:600 31px/1.15 "Songti SC",serif;margin:0 0 8px;letter-spacing:.03em}
+  .page-header p{font-size:12px;color:#969c96;margin:0}
+  .header-actions{display:flex;gap:9px;align-items:center}
+  .primary-btn{height:38px;padding:0 15px;border:0;border-radius:12px;background:var(--accent);color:#fff;display:flex;align-items:center;gap:8px;font-size:12px;box-shadow:0 7px 18px rgba(82,109,94,.18)}
+  .primary-btn svg,.secondary-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .secondary-btn{height:38px;padding:0 14px;border:1px solid #ded8cd;border-radius:12px;background:#fffdfa;color:#667069;display:flex;align-items:center;gap:7px;font-size:12px}
+  .filter-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .filter-row .chips{margin:0}
+  .filter-note{font-size:11px;color:#9da29c}
+  .continue-card{height:164px;border-radius:20px;background:linear-gradient(115deg,#e7ebe4 0%,#f2eee4 58%,#e9e0d1 100%);border:1px solid #ddd8cd;position:relative;overflow:hidden;padding:27px 30px;margin-bottom:24px;display:flex;align-items:center;gap:26px}
+  .continue-card:after{content:"";position:absolute;width:240px;height:240px;border-radius:50%;right:-70px;top:-90px;background:rgba(255,255,255,.36)}
+  .book-mini{width:78px;height:108px;border-radius:4px 8px 8px 4px;background:var(--accent);box-shadow:8px 10px 20px rgba(38,49,44,.18);position:relative;z-index:1;display:flex;align-items:flex-end;padding:13px}
+  .book-mini:before{content:"";position:absolute;left:8px;top:0;bottom:0;width:1px;background:rgba(255,255,255,.22)}
+  .book-mini span{font:600 12px/1.45 "Songti SC",serif;color:#fff;letter-spacing:.08em}
+  .continue-info{position:relative;z-index:2;flex:1}
+  .eyebrow{font-size:10px;letter-spacing:.16em;color:#7d8c83;text-transform:uppercase;margin-bottom:9px}
+  .continue-info h2{font:600 22px/1.25 "Songti SC",serif;margin:0 0 9px}
+  .continue-info p{font-size:12px;color:#848c85;margin:0}
+  .progress{height:5px;background:rgba(255,255,255,.6);border-radius:5px;margin-top:17px;overflow:hidden;max-width:410px}
+  .progress>i{display:block;height:100%;width:37%;background:var(--accent);border-radius:5px}
+  .continue-meta{position:relative;z-index:2;align-self:flex-end;font-size:11px;color:#838b84;margin-left:auto;padding-right:4px}
+  .section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .section-title h3{font:600 17px/1.2 "Songti SC",serif;margin:0}
+  .section-title span{font-size:11px;color:#9aa09a}
+  .book-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:18px}
+  .book-item{min-width:0}
+  .cover{position:relative;aspect-ratio:3/4.2;border-radius:5px 10px 10px 5px;overflow:hidden;box-shadow:6px 9px 17px rgba(55,49,39,.12);border:1px solid rgba(44,52,47,.08)}
+  .cover:after{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:rgba(255,255,255,.26)}
+  .cover .cover-title{position:absolute;left:16px;right:14px;top:23px;font-family:"Songti SC",serif;font-size:16px;font-weight:600;line-height:1.45;letter-spacing:.08em;color:#fff}
+  .cover .cover-sub{position:absolute;left:16px;bottom:16px;font-size:9px;letter-spacing:.08em;color:rgba(255,255,255,.72)}
+  .cover.c1{background:linear-gradient(145deg,#465e54,#71877b)}
+  .cover.c2{background:linear-gradient(145deg,#8a705e,#c2a486)}
+  .cover.c3{background:linear-gradient(145deg,#505763,#8e96a0)}
+  .cover.c4{background:linear-gradient(145deg,#988263,#d3c1a2)}
+  .cover.c5{background:linear-gradient(145deg,#784f4a,#b57d72)}
+  .cover .shape{position:absolute;border:1px solid rgba(255,255,255,.25);border-radius:50%;width:82px;height:82px;right:-30px;top:-22px}
+  .cover .shape.s2{width:48px;height:48px;left:-15px;top:auto;bottom:30px}
+  .book-item h4{font-size:12px;margin:10px 2px 5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .book-sub{display:flex;justify-content:space-between;font-size:10px;color:#939a93;padding:0 2px}
+  .reading-dot{color:var(--accent)}
+
+  /* library */
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
+  .stat-card{border:1px solid #e1dbd0;background:#fffdfa;border-radius:14px;padding:13px 15px}
+  .stat-card b{display:block;font:600 18px/1.2 "Songti SC",serif;margin-bottom:4px}
+  .stat-card span{font-size:10px;color:#999f99}
+  .resource-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .resource-card{height:148px;border:1px solid #e3ddd2;background:#fffdfa;border-radius:16px;padding:14px;position:relative;overflow:hidden}
+  .file-icon{width:40px;height:48px;border-radius:5px 9px 9px 5px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:7px;font-size:9px;font-weight:700;letter-spacing:.04em;color:#fff;position:relative}
+  .file-icon:before{content:"";position:absolute;right:0;top:0;border-left:12px solid transparent;border-bottom:12px solid rgba(255,255,255,.35)}
+  .f-pdf{background:#b85d57}.f-ppt{background:#b57955}.f-doc{background:#607f9f}.f-img{background:#6d8e73}.f-audio{background:#8d76a0}.f-book{background:#7e6e59}
+  .resource-card h4{font-size:12px;margin:13px 0 5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .resource-card p{font-size:10px;color:#979d97;margin:0}
+  .card-more{position:absolute;right:11px;top:12px;color:#a1a69f;font-size:16px;letter-spacing:.08em}
+  .wave{height:24px;margin-top:7px;background:repeating-linear-gradient(90deg,transparent 0 3px,#9b88a9 3px 4px,transparent 4px 7px);opacity:.45;clip-path:polygon(0 48%,9% 35%,18% 67%,27% 23%,36% 64%,45% 20%,54% 69%,63% 34%,72% 58%,81% 24%,90% 61%,100% 42%,100% 100%,0 100%)}
+  .recent-list{margin-top:22px;border-top:1px solid #e2ddd3;padding-top:18px}
+  .recent-list h3{font:600 17px/1.2 "Songti SC",serif;margin:0 0 10px}
+  .recent-row{height:48px;border-bottom:1px solid #ece7de;display:flex;align-items:center;gap:11px;font-size:11px;color:#7b837d}
+  .recent-row .mini-type{width:26px;height:30px;border-radius:4px;color:#fff;display:grid;place-items:center;font-size:7px;font-weight:700}
+  .recent-row b{font-size:11px;color:#4f5a54;font-weight:500}
+  .recent-row .size{margin-left:auto;color:#a3a8a2}
+
+  /* reader */
+  .reader-screen{background:#eeeae2}
+  .reader-top{position:absolute;left:96px;right:0;top:0;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;background:rgba(247,244,237,.92);border-bottom:1px solid #ddd8ce;z-index:5}
+  .reader-title{display:flex;align-items:center;gap:12px}
+  .reader-title h2{font:600 15px/1.3 "Songti SC",serif;margin:0}
+  .reader-title span{font-size:10px;color:#999f99}
+  .reader-tools{display:flex;align-items:center;gap:7px}
+  .reader-body{position:absolute;left:96px;right:276px;top:64px;bottom:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 45%,#f7f4ec,#e9e4da);padding:34px}
+  .doc-page{width:520px;height:680px;background:#fffefa;box-shadow:0 18px 42px rgba(65,55,41,.14);position:relative;padding:58px 58px 50px 64px;overflow:visible}
+  .doc-page h2{font:600 24px/1.35 "Songti SC",serif;margin:0 0 8px;letter-spacing:.02em}
+  .doc-kicker{font-size:9px;letter-spacing:.18em;color:#9d9f98;margin-bottom:28px;text-transform:uppercase}
+  .doc-page p{font-family:"Songti SC","STSong",serif;color:#575c56;font-size:12px;line-height:2;margin:0 0 13px;text-align:justify}
+  .doc-page .quote{padding:12px 15px;border-left:2px solid #a9b3aa;background:#f6f4ed;color:#71776f;font-family:"KaiTi",serif;font-size:13px;line-height:1.75;margin:17px 0}
+  .page-highlight{background:linear-gradient(transparent 44%,rgba(216,196,123,.38) 44%,rgba(216,196,123,.38) 89%,transparent 89%)}
+  .annotation-ink{position:absolute;left:45px;bottom:55px;width:420px;height:120px;mix-blend-mode:multiply}
+  .doc-pageno{position:absolute;right:34px;bottom:28px;font-size:10px;color:#a4a8a2}
+  .margin-float{position:absolute;left:calc(100% + 16px);top:50px;width:122px;background:rgba(255,253,248,.96);border:1px solid #ded8cd;border-radius:12px;box-shadow:0 8px 20px rgba(47,42,35,.08);padding:11px}
+  .margin-float h4{font-size:10px;margin:0 0 9px;font-weight:600;color:#68736d}
+  .slider{height:3px;background:#dde2dc;border-radius:3px;position:relative;margin:12px 3px 16px}
+  .slider:before{content:"";position:absolute;left:0;top:0;width:62%;height:100%;background:var(--accent);border-radius:3px}
+  .slider:after{content:"";position:absolute;left:62%;top:50%;width:12px;height:12px;border-radius:50%;background:#fff;border:2px solid var(--accent);transform:translate(-50%,-50%)}
+  .margin-float label{display:flex;justify-content:space-between;font-size:8px;color:#9da29d;margin-bottom:12px}
+  .margin-float button{height:28px;width:100%;border:0;border-radius:8px;background:#eef2ee;color:var(--accent);font-size:9px}
+  .tools-float{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);height:48px;padding:5px;border-radius:15px;background:rgba(255,253,248,.97);border:1px solid #ded8cd;box-shadow:0 8px 24px rgba(48,42,34,.11);display:flex;gap:3px;align-items:center;z-index:7}
+  .tools-float .tool{height:37px;min-width:37px}
+  .annotation-rail{position:absolute;right:0;top:64px;bottom:0;width:276px;background:#f7f4ed;border-left:1px solid #ddd8ce;padding:25px 20px;z-index:4}
+  .annotation-rail .rail-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:19px}
+  .annotation-rail h3{font:600 17px/1.2 "Songti SC",serif;margin:0}
+  .annotation-rail .count{font-size:10px;color:#9ca19b}
+  .annot-card{background:#fffdfa;border:1px solid #e4ded3;border-radius:13px;padding:13px;margin-bottom:10px}
+  .annot-card .meta{display:flex;align-items:center;gap:7px;font-size:9px;color:#9ca19b;margin-bottom:8px}
+  .annot-card .color{width:7px;height:7px;border-radius:50%;background:#d0ad5d}
+  .annot-card p{font-family:"KaiTi",serif;font-size:13px;line-height:1.65;color:#4f5b55;margin:0}
+  .annot-card .replay{display:flex;align-items:center;gap:5px;margin-top:9px;font-size:9px;color:var(--accent)}
+  .annot-card .replay svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.7}
+  .selection-popup{position:absolute;left:186px;top:284px;background:#28332f;color:#fff;border-radius:8px;padding:7px 9px;font-size:9px;display:flex;gap:14px;box-shadow:0 7px 15px rgba(30,34,31,.22);z-index:5}
+  .selection-popup:after{content:"";position:absolute;left:30px;bottom:-5px;width:10px;height:10px;background:#28332f;transform:rotate(45deg)}
+
+  /* dialogs board */
+  .dialog-board{background:linear-gradient(135deg,#e9e4da,#f5f1e8);padding:38px 42px}
+  .dialog-heading{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px}
+  .dialog-heading h1{font:600 24px/1.2 "Songti SC",serif;margin:0 0 6px}
+  .dialog-heading p{font-size:11px;color:#888f89;margin:0}
+  .dialog-grid{display:grid;grid-template-columns:330px 390px 330px;gap:24px;height:700px}
+  .dialog-demo{background:rgba(255,253,248,.68);border:1px solid rgba(218,211,200,.85);border-radius:20px;position:relative;overflow:hidden;box-shadow:0 10px 30px rgba(54,47,37,.07)}
+  .demo-label{position:absolute;left:16px;top:14px;font-size:9px;letter-spacing:.12em;color:#9a9f99;z-index:2}
+  .modal{position:absolute;left:50%;top:55px;transform:translateX(-50%);background:#fffdfa;border:1px solid #e2dbd0;border-radius:17px;box-shadow:0 16px 40px rgba(48,41,32,.13);padding:20px}
+  .modal h3{font:600 19px/1.2 "Songti SC",serif;margin:0 0 5px}
+  .modal .desc{font-size:10px;color:#969c96;margin:0 0 18px}
+  .form-label{display:block;font-size:9px;color:#8c938d;margin:0 0 7px}
+  .input{height:38px;border-radius:10px;border:1px solid #e2ddd3;background:#fbfaf7;display:flex;align-items:center;padding:0 11px;font-size:11px;color:#5f6a63;margin-bottom:15px}
+  .type-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+  .type-option{border:1px solid #e1dcd2;border-radius:11px;padding:11px 9px;background:#fbfaf7}
+  .type-option.active{border-color:var(--accent);background:#eef3ef;box-shadow:inset 0 0 0 1px var(--accent)}
+  .type-option svg{width:19px;height:19px;fill:none;stroke:var(--accent);stroke-width:1.5;margin-bottom:7px}
+  .type-option b{display:block;font-size:10px;color:#53605a;margin-bottom:3px}
+  .type-option span{font-size:8px;color:#9aa09a}
+  .template-row{display:flex;gap:7px;margin-bottom:16px}
+  .template{width:44px;height:34px;border:1px solid #dfd9cf;border-radius:7px;background:#fff}
+  .template.lines{background:repeating-linear-gradient(#fff 0 7px,#e8e3d9 7px 8px)}
+  .template.grid{background:repeating-linear-gradient(#fff 0 9px,#e8e3d9 9px 10px),repeating-linear-gradient(90deg,#fff 0 9px,#e8e3d9 9px 10px)}
+  .template.dots{background-image:radial-gradient(#d9d4ca 1px,transparent 1px);background-size:7px 7px}
+  .template.active{outline:2px solid var(--accent);border-color:transparent}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:3px}
+  .modal-actions button{height:34px;padding:0 15px;border-radius:9px;font-size:10px}
+  .cancel{border:1px solid #ddd8ce;background:#fffdfa;color:#6f7871}
+  .confirm{border:0;background:var(--accent);color:#fff}
+  .import-modal{top:49px;width:390px}
+  .dropzone{border:1.5px dashed #cfd8d0;background:#f5f8f5;border-radius:13px;height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--accent);margin-bottom:15px}
+  .dropzone svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.5;margin-bottom:9px}
+  .dropzone b{font-size:11px;font-weight:600}
+  .dropzone span{font-size:8px;color:#9aa29c;margin-top:5px}
+  .type-pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:15px}
+  .type-pill{height:25px;padding:0 9px;border-radius:20px;background:#f1eee7;display:flex;align-items:center;font-size:8px;color:#7f8780}
+  .import-target{border-top:1px solid #ebe5db;padding-top:13px;margin-bottom:15px}
+  .target-row{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;background:#f7f5ef;margin-bottom:6px}
+  .target-icon{width:25px;height:25px;border-radius:7px;display:grid;place-items:center;background:#e2eae4;color:var(--accent)}
+  .target-icon svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.6}
+  .target-row b{font-size:9px;color:#59655e}
+  .target-row span{display:block;font-size:8px;color:#9aa09a;margin-top:2px}
+  .target-row .radio{margin-left:auto;width:13px;height:13px;border-radius:50%;border:1px solid #9ea79f}
+  .target-row.active .radio{border:4px solid var(--accent)}
+  .settings-panel{position:absolute;left:16px;right:16px;top:48px;background:#fffdfa;border:1px solid #e1dbd1;border-radius:17px;box-shadow:0 15px 35px rgba(48,42,33,.11);padding:18px}
+  .settings-panel h3{font:600 19px/1.2 "Songti SC",serif;margin:0 0 16px}
+  .setting-section{border-top:1px solid #eee9df;padding:14px 0}
+  .setting-section:first-of-type{border-top:0;padding-top:0}
+  .setting-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .setting-title b{font-size:10px;font-weight:600;color:#59645e}
+  .setting-title span{font-size:8px;color:#9ea39e}
+  .segmented{height:31px;background:#f1eee7;border-radius:9px;padding:3px;display:grid;grid-template-columns:repeat(3,1fr);gap:2px}
+  .segmented span{border-radius:7px;display:grid;place-items:center;font-size:8px;color:#8b928c}
+  .segmented .active{background:#fffdfa;color:var(--ink);box-shadow:0 2px 6px rgba(50,43,34,.07)}
+  .font-row{display:flex;align-items:center;justify-content:space-between;height:31px}
+  .font-row span{font-size:9px;color:#7e867f}
+  .font-value{font-size:9px;color:var(--accent);background:#eef3ef;border-radius:7px;padding:5px 8px}
+  .swatches{display:flex;gap:8px}
+  .swatch{width:24px;height:24px;border-radius:50%;background:#fffefa;border:1px solid #ddd8ce}
+  .swatch.s2{background:#f1ead7}.swatch.s3{background:#222a27}.swatch.s4{background:#e9e7e3}
+  .swatch.active{outline:2px solid var(--accent);outline-offset:2px}
+  .toggle-row{display:flex;justify-content:space-between;align-items:center;margin:9px 0}
+  .toggle-row span{font-size:9px;color:#6f7972}
+  .toggle{width:31px;height:18px;border-radius:20px;background:#d8ddd8;position:relative}
+  .toggle:after{content:"";position:absolute;left:2px;top:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .toggle.on{background:var(--accent)}.toggle.on:after{left:15px}
+  .dialog-note{position:absolute;bottom:16px;left:17px;right:17px;font-size:8px;line-height:1.6;color:#9ca19c;text-align:center}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- 01 NOTES -->
+  <section class="artboard" data-screen="notes">
+    <aside class="rail">
+      <div class="brand"><div class="brand-mark">F</div><div class="brand-name">FreeNote</div></div>
+      <nav class="nav">
+        <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M6 3.8h9.4L19 7.4v12.8H6z"/><path d="M15.4 3.8v3.6H19M9 12h7M9 15.5h5"/></svg><span>笔记</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4.5 5.2h5.1c1.2 0 2.4.8 2.4 2.1v12c0-1.3-1.2-2.1-2.4-2.1H4.5zM19.5 5.2h-5.1c-1.2 0-2.4.8-2.4 2.1v12c0-1.3 1.2-2.1 2.4-2.1h5.1z"/></svg><span>书架</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 7.4h6l1.5 2H20v9.2H4z"/><path d="M4 7.4V5.5h5.2l1.3 1.9"/></svg><span>资源库</span></div>
+      </nav>
+      <div class="rail-bottom">
+        <div class="rail-icon"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg></div>
+        <div class="rail-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-2-1.1L14.3 3h-4.6l-.3 2.8a7.4 7.4 0 0 0-2 1.1l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 2 1.1l.3 2.8h4.6l.3-2.8a7.4 7.4 0 0 0 2-1.1l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></div>
+      </div>
+    </aside>
+
+    <aside class="list-pane">
+      <div class="pane-head"><h1>笔记</h1><button class="circle-btn"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>
+      <div class="search"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg><span>搜索笔记</span></div>
+      <div class="chips"><span class="chip active">全部</span><span class="chip">最近</span><span class="chip">收藏</span></div>
+      <div class="note-list">
+        <article class="note-card active"><h3>秋日阅读清单</h3><p>关于阅读、散步和一杯温热的咖啡……</p><div class="note-meta"><span><i class="tag-dot"></i>今天 16:42</span><span>8 页</span></div></article>
+        <article class="note-card"><h3>京都旅行手记</h3><p>第一天：从鸭川开始，沿着小路慢慢走。</p><div class="note-meta"><span><i class="tag-dot" style="background:#8aa29a"></i>昨天</span><span>14 页</span></div></article>
+        <article class="note-card"><h3>设计灵感收集</h3><p>留白不是空，是让内容有呼吸的地方。</p><div class="note-meta"><span><i class="tag-dot" style="background:#9b86a5"></i>10 月 31 日</span><span>6 页</span></div></article>
+        <article class="note-card"><h3>本周待办</h3><p>整理书架、导出读书笔记、给旧照片归档。</p><div class="note-meta"><span><i class="tag-dot" style="background:#b58b65"></i>10 月 29 日</span><span>3 页</span></div></article>
+        <article class="note-card"><h3>Untitled</h3><p>今日随手画下的几根线条。</p><div class="note-meta"><span><i class="tag-dot" style="background:#c6a269"></i>10 月 27 日</span><span>1 页</span></div></article>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div class="doc-title"><h2>秋日阅读清单</h2><span>已保存 · 16:42</span></div>
+        <div class="top-actions"><button class="action-btn"><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>导入</button><button class="icon-btn"><svg viewBox="0 0 24 24"><path d="M7 5h10v14H7zM9.5 9h5M9.5 12h5M9.5 15h3"/></svg></button><button class="icon-btn"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button></div>
+      </header>
+      <section class="canvas-stage">
+        <div class="page-meta">第 1 页 / 共 8 页</div>
+        <div class="canvas">
+          <div class="dot-grid"></div>
+          <div class="paper-note title-hand">阅读与散步</div>
+          <div class="paper-note sub-hand">一个关于慢下来的周末计划</div>
+          <div class="hand-body">今天想读一本没有目的的书。<br>从窗边的光开始，记下喜欢的句子，<br>也许再画一张咖啡馆的速写。<br><br><b>“留一点空白，给不经意的想法。”</b></div>
+          <div class="mini-sketch"><div class="tape"></div><h4>周六 · 午后</h4><p>09:30&nbsp;&nbsp;散步到旧书店<br>11:00&nbsp;&nbsp;咖啡与阅读<br>14:30&nbsp;&nbsp;整理今天的摘录<br>16:00&nbsp;&nbsp;把照片贴进手记</p></div>
+          <svg class="ink-stroke" viewBox="0 0 340 190" fill="none" stroke="#34443c" stroke-linecap="round" stroke-linejoin="round"><path d="M32 128c22-35 51-43 68-25 19 20-4 53-26 43-18-8 2-37 34-38 35-2 49 31 70 25 20-6 24-34 9-42-15-8-31 11-24 26 9 18 41 13 63-2" stroke-width="2"/><path d="M38 153c37-4 78-4 121-2 41 2 88 1 135-4" stroke-width="1.2" opacity=".7"/><path d="M249 72c8-8 17-9 23-2M260 61c4 1 7 4 8 9" stroke-width="1.2" opacity=".7"/></svg>
+          <div class="selection-box"><span>手写选区</span></div>
+          <div class="page-tabs"><div class="page-tab active">01</div><div class="page-tab">02</div><div class="page-tab">03</div><div class="page-tab">···</div></div>
+        </div>
+        <div class="zoom-status">缩放 76%</div>
+        <div class="toolbar">
+          <div class="tool active pen"><span class="pen-dot"></span><span>钢笔</span></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="m4 17 9.8-9.8 3 3L7 20H4zM13.8 7.2l3 3M4 12h6"/></svg></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="M5 17.5 17.5 5 20 7.5 7.5 20H5z"/><path d="m14.8 7.8 3 3"/><path d="M4 5h5M4 8h3"/></svg></div>
+          <div class="sep"></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="m7 17 6-10 4 4-9 7H5z"/><path d="M13 7h5v5"/></svg></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/><path d="m6 16 4-4 3 3 2-2 3 3"/><circle cx="10" cy="9.5" r="1"/></svg></div>
+          <div class="sep"></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M15 7l5 5-5 5"/></svg></div>
+          <div class="tool"><svg viewBox="0 0 24 24"><path d="M5 5v14M9 7h10v10H9z"/></svg></div>
+        </div>
+      </section>
+    </main>
+  </section>
+
+  <!-- 02 BOOKSHELF -->
+  <section class="artboard" data-screen="bookshelf">
+    <aside class="rail">
+      <div class="brand"><div class="brand-mark">F</div><div class="brand-name">FreeNote</div></div>
+      <nav class="nav">
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M6 3.8h9.4L19 7.4v12.8H6z"/><path d="M15.4 3.8v3.6H19M9 12h7M9 15.5h5"/></svg><span>笔记</span></div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M4.5 5.2h5.1c1.2 0 2.4.8 2.4 2.1v12c0-1.3-1.2-2.1-2.4-2.1H4.5zM19.5 5.2h-5.1c-1.2 0-2.4.8-2.4 2.1v12c0-1.3 1.2-2.1 2.4-2.1h5.1z"/></svg><span>书架</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 7.4h6l1.5 2H20v9.2H4z"/><path d="M4 7.4V5.5h5.2l1.3 1.9"/></svg><span>资源库</span></div>
+      </nav>
+      <div class="rail-bottom"><div class="rail-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-2-1.1L14.3 3h-4.6l-.3 2.8a7.4 7.4 0 0 0-2 1.1l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 2 1.1l.3 2.8h4.6l.3-2.8a7.4 7.4 0 0 0 2-1.1l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></div></div>
+    </aside>
+    <main class="main-pane">
+      <div class="page-header"><div><h1>书架</h1><p>你的阅读都停在这里，下一次从上次的位置继续。</p></div><div class="header-actions"><button class="secondary-btn"><svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="m15.2 15.2 4 4"/></svg>搜索</button><button class="primary-btn"><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>导入书籍</button></div></div>
+      <div class="continue-card"><div class="book-mini"><span>设计的<br>日常</span></div><div class="continue-info"><div class="eyebrow">CONTINUE READING</div><h2>设计的日常</h2><p>第 4 章 · 留白不是空，是让内容有呼吸的地方</p><div class="progress"><i></i></div></div><div class="continue-meta">第 37 / 128 页<br><br>阅读 12 分钟前</div></div>
+      <div class="filter-row"><div class="chips"><span class="chip active">全部 12</span><span class="chip">在读 3</span><span class="chip">已完成 2</span></div><div class="filter-note">最近阅读优先</div></div>
+      <div class="section-title"><h3>我的书架</h3><span>网格视图</span></div>
+      <div class="book-grid">
+        <div class="book-item"><div class="cover c1"><div class="shape"></div><div class="shape s2"></div><div class="cover-title">设计的<br>日常</div><div class="cover-sub">DESIGN NOTES</div></div><h4>设计的日常</h4><div class="book-sub"><span class="reading-dot">在读 · 37%</span><span>PDF</span></div></div>
+        <div class="book-item"><div class="cover c2"><div class="shape"></div><div class="cover-title">京都<br>慢行</div><div class="cover-sub">TRAVEL NOTES</div></div><h4>京都慢行</h4><div class="book-sub"><span class="reading-dot">在读 · 12%</span><span>EPUB</span></div></div>
+        <div class="book-item"><div class="cover c3"><div class="shape"></div><div class="cover-title">看不见的<br>城市</div><div class="cover-sub">ITALO CALVINO</div></div><h4>看不见的城市</h4><div class="book-sub"><span>未开始</span><span>EPUB</span></div></div>
+        <div class="book-item"><div class="cover c4"><div class="shape"></div><div class="cover-title">写作<br>这回事</div><div class="cover-sub">ON WRITING</div></div><h4>写作这回事</h4><div class="book-sub"><span>已完成</span><span>PDF</span></div></div>
+        <div class="book-item"><div class="cover c5"><div class="shape"></div><div class="cover-title">人类<br>简史</div><div class="cover-sub">A BRIEF HISTORY</div></div><h4>人类简史</h4><div class="book-sub"><span>未开始</span><span>EPUB</span></div></div>
+      </div>
+    </main>
+  </section>
+
+  <!-- 03 LIBRARY -->
+  <section class="artboard" data-screen="library">
+    <aside class="rail">
+      <div class="brand"><div class="brand-mark">F</div><div class="brand-name">FreeNote</div></div>
+      <nav class="nav">
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M6 3.8h9.4L19 7.4v12.8H6z"/><path d="M15.4 3.8v3.6H19M9 12h7M9 15.5h5"/></svg><span>笔记</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4.5 5.2h5.1c1.2 0 2.4.8 2.4 2.1v12c0-1.3-1.2-2.1-2.4-2.1H4.5zM19.5 5.2h-5.1c-1.2 0-2.4.8-2.4 2.1v12c0-1.3 1.2-2.1 2.4-2.1h5.1z"/></svg><span>书架</span></div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M4 7.4h6l1.5 2H20v9.2H4z"/><path d="M4 7.4V5.5h5.2l1.3 1.9"/></svg><span>资源库</span></div>
+      </nav>
+      <div class="rail-bottom"><div class="rail-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-2-1.1L14.3 3h-4.6l-.3 2.8a7.4 7.4 0 0 0-2 1.1l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 2 1.1l.3 2.8h4.6l.3-2.8a7.4 7.4 0 0 0 2-1.1l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg></div></div>
+    </aside>
+    <main class="main-pane">
+      <div class="page-header"><div><h1>资源库</h1><p>图片、文档、音频和零散素材，都在这里随手可取。</p></div><div class="header-actions"><button class="secondary-btn"><svg viewBox="0 0 24 24"><path d="M4 7h5l2 2h9v10H4z"/><path d="M12 11v5M9.5 13.5h5"/></svg>新建文件夹</button><button class="primary-btn"><svg viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></svg>导入文件</button></div></div>
+      <div class="stat-row"><div class="stat-card"><b>24</b><span>全部文件</span></div><div class="stat-card"><b>8</b><span>文档</span></div><div class="stat-card"><b>11</b><span>图片</span></div><div class="stat-card"><b>3</b><span>音频</span></div></div>
+      <div class="filter-row"><div class="chips"><span class="chip active">全部</span><span class="chip">最近导入</span><span class="chip">文档</span><span class="chip">图片</span><span class="chip">音频</span><span class="chip">未归档</span></div><div class="filter-note">按导入时间排序</div></div>
+      <div class="resource-grid">
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-pdf">PDF</div><h4>品牌设计手册.pdf</h4><p>8.4 MB · 今天 14:20</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-ppt">PPT</div><h4>产品发布会_终稿.pptx</h4><p>18.2 MB · 昨天</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-img">IMG</div><h4>下午四点的窗边.heic</h4><p>3.1 MB · 10 月 31 日</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-audio">WAV</div><div class="wave"></div><h4>咖啡店环境音.wav</h4><p>02:18 · 10 月 30 日</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-doc">DOC</div><h4>阅读摘录与批注.docx</h4><p>640 KB · 10 月 29 日</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-book">EPUB</div><h4>看不见的城市.epub</h4><p>1.2 MB · 10 月 27 日</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-img">IMG</div><h4>纸张纹理_米白.png</h4><p>1.8 MB · 10 月 26 日</p></article>
+        <article class="resource-card"><span class="card-more">···</span><div class="file-icon f-pdf">PDF</div><h4>设计心理学_节选.pdf</h4><p>4.7 MB · 10 月 24 日</p></article>
+      </div>
+      <div class="recent-list"><h3>最近使用</h3><div class="recent-row"><span class="mini-type" style="background:#b85d57">PDF</span><b>品牌设计手册.pdf</b><span style="margin-left:12px">插入到「秋日阅读清单」</span><span class="size">今天 16:31</span></div><div class="recent-row"><span class="mini-type" style="background:#6d8e73">IMG</span><b>下午四点的窗边.heic</b><span style="margin-left:12px">预览</span><span class="size">昨天 18:05</span></div></div>
+    </main>
+  </section>
+
+  <!-- 04 READER -->
+  <section class="artboard reader-screen" data-screen="reader">
+    <aside class="rail">
+      <div class="brand"><div class="brand-mark">F</div><div class="brand-name">FreeNote</div></div>
+      <nav class="nav">
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M6 3.8h9.4L19 7.4v12.8H6z"/><path d="M15.4 3.8v3.6H19M9 12h7M9 15.5h5"/></svg><span>笔记</span></div>
+        <div class="nav-item active"><svg viewBox="0 0 24 24"><path d="M4.5 5.2h5.1c1.2 0 2.4.8 2.4 2.1v12c0-1.3-1.2-2.1-2.4-2.1H4.5zM19.5 5.2h-5.1c-1.2 0-2.4.8-2.4 2.1v12c0-1.3 1.2-2.1 2.4-2.1h5.1z"/></svg><span>书架</span></div>
+        <div class="nav-item"><svg viewBox="0 0 24 24"><path d="M4 7.4h6l1.5 2H20v9.2H4z"/><path d="M4 7.4V5.5h5.2l1.3 1.9"/></svg><span>资源库</span></div>
+      </nav>
+      <div class="rail-bottom"><div class="rail-icon"><svg viewBox="0 0 24 24"><path d="M19 12H5M9 8l-4 4 4 4"/></svg></div></div>
+    </aside>
+    <header class="reader-top"><div class="reader-title"><h2>设计的日常</h2><span>第 37 / 128 页 · PDF</span></div><div class="reader-tools"><button class="icon-btn"><svg viewBox="0 0 24 24"><path d="M7 5h10v14H7zM9.5 9h5M9.5 12h5M9.5 15h3"/></svg></button><button class="icon-btn"><svg viewBox="0 0 24 24"><path d="M5 8h14M5 12h10M5 16h7"/></svg></button><button class="icon-btn"><svg viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></svg></button></div></header>
+    <main class="reader-body">
+      <div class="doc-page">
+        <div class="doc-kicker">CHAPTER 04 · DESIGN NOTES</div>
+        <h2>留白不是空，<br>是让内容有呼吸的地方</h2>
+        <p>我们常常把页面填满，以为更多的信息会带来更多的价值。但真正让阅读发生的，往往不是信息本身，而是信息之间那一点点安静的间隔。</p>
+        <p><span class="page-highlight">留白不是没有设计，而是一种更克制的设计。</span>它允许视线停下来，允许读者在文字之外，找到自己的联想。</p>
+        <div class="quote">“当页面开始安静下来，内容才有机会被真正听见。”</div>
+        <p>在设计一本数字笔记时，边缘、间距和触感都应该服务于同一件事：让注意力回到正在发生的事情上。</p>
+        <svg class="annotation-ink" viewBox="0 0 420 120" fill="none" stroke="#516a5c" stroke-linecap="round" stroke-linejoin="round"><path d="M19 75c28-41 58-29 44-1-12 25-42 14-26-9 14-21 50-16 61 17 5 16 21 18 34 5" stroke-width="2" opacity=".8"/><path d="M159 36c15-8 33-10 50-4 12 4 15 12 7 18-9 7-26 1-26-10 0-13 24-16 43-10 22 7 35 22 54 12" stroke-width="2" opacity=".82"/><path d="M301 78c14-12 30-12 40-2" stroke-width="1.3" opacity=".65"/><path d="M28 99c52-7 104-8 158-4 54 4 103 2 154-5 20-3 39-6 55-7" stroke-width="1" opacity=".35"/></svg>
+        <div class="margin-float"><h4>页面留白</h4><div class="slider"></div><label><span>窄</span><span>宽</span></label><button>插入空白页</button></div>
+        <div class="selection-popup"><span>复制</span><span>高亮</span><span>批注</span></div>
+        <div class="doc-pageno">37</div>
+      </div>
+      <div class="tools-float"><div class="tool active pen"><span class="pen-dot" style="background:#d1ac58"></span></div><div class="tool"><svg viewBox="0 0 24 24"><path d="m4 17 9.8-9.8 3 3L7 20H4zM13.8 7.2l3 3M4 12h6"/></svg></div><div class="tool"><svg viewBox="0 0 24 24"><path d="m7 17 6-10 4 4-9 7H5z"/><path d="M13 7h5v5"/></svg></div><div class="sep"></div><div class="tool"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M15 7l5 5-5 5"/></svg></div><div class="tool"><svg viewBox="0 0 24 24"><path d="M5 5v14M9 7h10v10H9z"/></svg></div></div>
+    </main>
+    <aside class="annotation-rail">
+      <div class="rail-head"><h3>批注</h3><span class="count">6 条 · 第 37 页</span></div>
+      <div class="annot-card"><div class="meta"><i class="color"></i><span>手写 · 第 37 页</span></div><p>留白不是没有设计，而是一种更克制的设计。</p><div class="replay"><svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 0 2-5M5 5v4h4"/></svg>回放笔迹</div></div>
+      <div class="annot-card"><div class="meta"><i class="color" style="background:#7c9a86"></i><span>高亮 · 第 31 页</span></div><p>让注意力回到正在发生的事情上。</p></div>
+      <div class="annot-card"><div class="meta"><i class="color" style="background:#a07f97"></i><span>文本批注 · 第 28 页</span></div><p>这一页的留白比例很适合手写，可以放大一点。</p></div>
+      <div class="annot-card"><div class="meta"><i class="color" style="background:#c39e5f"></i><span>书签 · 第 24 页</span></div><p>“安静”是一种设计材料。</p></div>
+    </aside>
+  </section>
+
+  <!-- 05 DIALOGS -->
+  <section class="artboard dialog-board" data-screen="dialogs">
+    <div class="dialog-heading"><div><h1>弹窗与设置</h1><p>新建笔记 / 导入文件 / 设置面板 · 轻量、低干扰、保持内容上下文</p></div><div style="font-size:10px;color:#929993">FreeNote · visual draft v0.1</div></div>
+    <div class="dialog-grid">
+      <div class="dialog-demo">
+        <div class="demo-label">A · 新建笔记</div>
+        <div class="modal" style="width:292px">
+          <h3>新建笔记</h3><p class="desc">选择一种适合当前场景的页面。</p>
+          <label class="form-label">笔记名称</label><div class="input">未命名笔记</div>
+          <label class="form-label">笔记类型</label>
+          <div class="type-options"><div class="type-option active"><svg viewBox="0 0 24 24"><path d="M6 3.8h9.4L19 7.4v12.8H6z"/><path d="M15.4 3.8v3.6H19M9 12h7M9 15.5h5"/></svg><b>分页笔记本</b><span>适合摘录与整理</span></div><div class="type-option"><svg viewBox="0 0 24 24"><path d="M5 5h14v14H5z"/><path d="M5 10h14M10 5v14"/></svg><b>无限画布</b><span>适合自由书写</span></div></div>
+          <label class="form-label">纸张模板</label>
+          <div class="template-row"><div class="template active"></div><div class="template lines"></div><div class="template grid"></div><div class="template dots"></div></div>
+          <div class="modal-actions"><button class="cancel">取消</button><button class="confirm">创建笔记</button></div>
+        </div>
+        <div class="dialog-note">创建后仍可在笔记信息中修改模板与封面颜色。</div>
+      </div>
+
+      <div class="dialog-demo">
+        <div class="demo-label">B · 导入文件</div>
+        <div class="modal import-modal">
+          <h3>导入文件</h3><p class="desc">文件会被复制到 FreeNote，原文件保持不变。</p>
+          <div class="dropzone"><svg viewBox="0 0 24 24"><path d="M12 16V5M8 9l4-4 4 4"/><path d="M5 15v3.5h14V15"/></svg><b>从“文件”或“照片”中选择</b><span>也可直接从其他 App 拖入</span></div>
+          <div class="type-pills"><span class="type-pill">PDF</span><span class="type-pill">Word / PPT</span><span class="type-pill">EPUB</span><span class="type-pill">图片</span><span class="type-pill">音频</span></div>
+          <div class="import-target"><label class="form-label">导入到</label><div class="target-row active"><span class="target-icon"><svg viewBox="0 0 24 24"><path d="M4.5 5.2h5.1c1.2 0 2.4.8 2.4 2.1v12c0-1.3-1.2-2.1-2.4-2.1H4.5zM19.5 5.2h-5.1c-1.2 0-2.4.8-2.4 2.1v12c0-1.3 1.2-2.1 2.4-2.1h5.1z"/></svg></span><div><b>书架</b><span>适合 PDF、EPUB 和课件</span></div><i class="radio"></i></div><div class="target-row"><span class="target-icon"><svg viewBox="0 0 24 24"><path d="M4 7.4h6l1.5 2H20v9.2H4z"/><path d="M4 7.4V5.5h5.2l1.3 1.9"/></svg></span><div><b>资源库</b><span>适合图片、音频和零散素材</span></div><i class="radio"></i></div></div>
+          <div class="modal-actions"><button class="cancel">取消</button><button class="confirm">开始导入</button></div>
+        </div>
+        <div class="dialog-note">导入后可通过底部提示撤销，或立即移动到另一处。</div>
+      </div>
+
+      <div class="dialog-demo">
+        <div class="demo-label">C · 设置</div>
+        <div class="settings-panel">
+          <h3>设置</h3>
+          <div class="setting-section"><div class="setting-title"><b>外观</b><span>跟随系统</span></div><div class="segmented"><span>亮色</span><span class="active">跟随系统</span><span>暗色</span></div></div>
+          <div class="setting-section"><div class="setting-title"><b>字体与排版</b><span>阅读与笔记</span></div><div class="font-row"><span>字号</span><span class="font-value">标准 · 16 px</span></div><div class="font-row"><span>字体</span><span class="font-value">系统默认</span></div><div class="font-row"><span>纸张色</span><div class="swatches"><i class="swatch active"></i><i class="swatch s2"></i><i class="swatch s3"></i><i class="swatch s4"></i></div></div></div>
+          <div class="setting-section"><div class="setting-title"><b>手写笔</b><span>Apple Pencil</span></div><div class="toggle-row"><span>防误触</span><i class="toggle on"></i></div><div class="toggle-row"><span>双击笔身切换橡皮擦</span><i class="toggle on"></i></div><div class="toggle-row"><span>显示笔迹平滑度</span><i class="toggle"></i></div></div>
+          <div class="setting-section"><div class="setting-title"><b>常用</b><span>本地数据</span></div><div class="toggle-row"><span>自动保存</span><i class="toggle on"></i></div><div class="toggle-row"><span>隐私模式</span><i class="toggle"></i></div><div class="toggle-row"><span>显示最近文件</span><i class="toggle on"></i></div></div>
+        </div>
+        <div class="dialog-note">设置面板只覆盖局部区域，用户仍能看到背后的内容。</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view');
+  if (view) {
+    document.body.classList.add('single');
+    document.querySelectorAll('.artboard').forEach(el => {
+      el.classList.toggle('active', el.dataset.screen === view);
+    });
+  }
+</script>
+</body>
+</html>
+
+
