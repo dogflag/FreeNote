@@ -34,6 +34,10 @@ scripts/build-ipa.sh
 
 也可以将仓库推送到 GitHub，在 Actions 中运行 `Build TrollStore IPA`，下载 `FreeNote-unsigned-ipa` artifact。
 
+## 下载测试包
+
+最新预发布版本：https://github.com/dogflag/FreeNote/releases/tag/v0.1.0-alpha.1
+
 ## 真机安装
 
 1. 下载 `FreeNote-unsigned.ipa`；
@@ -52,7 +56,7 @@ scripts/build-ipa.sh
 - [x] 笔记工作区
 - [x] 书架、资源库和阅读器
 - [x] 大纲功能
-- [ ] IPA 云构建与真机验证（需 macOS/GitHub Actions）
+- [x] IPA 云构建`n- [ ] TrollStore 真机安装验证
 
 ## 文档
 
@@ -66,3 +70,4 @@ scripts/build-ipa.sh
 - PDF 的“页面留白”目前是阅读预览；插入空白页、裁剪及写回原 PDF 尚未实现。
 - EPUB、PPT、Word 等通过 QuickLook 打开；自动目录识别目前覆盖 PDF、EPUB 和 PPTX，其他 Office 格式使用保守 fallback。
 - 尚未在真实 iPad / TrollStore 环境验证。
+

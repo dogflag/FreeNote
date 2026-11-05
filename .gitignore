@@ -7,3 +7,9 @@ FreeNote.xcodeproj/
 .swiftpm/
 .env
 *.ipa
+
+# Local build outputs and debugging captures
+artifacts/
+device-*.png
+edge-*.png
+run-failed.log
