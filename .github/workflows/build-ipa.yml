@@ -24,12 +24,8 @@ jobs:
 
       - name: Run unit tests
         run: |
-          xcodegen generate
-          xcodebuild test \
-            -project FreeNote.xcodeproj \
-            -scheme FreeNote \
-            -destination 'platform=iOS Simulator,name=iPad (10th generation)' \
-            CODE_SIGNING_ALLOWED=NO
+          chmod +x scripts/run-tests.sh
+          scripts/run-tests.sh
 
       - name: Build unsigned IPA
         run: |
@@ -42,3 +38,4 @@ jobs:
           name: FreeNote-unsigned-ipa
           path: build/FreeNote-unsigned.ipa
           if-no-files-found: error
+
