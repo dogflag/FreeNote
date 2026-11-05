@@ -79,8 +79,7 @@ final class PressureEraserCanvasOverlay: UIView {
         guard stroke.renderBounds.insetBy(dx: -radius, dy: -radius).contains(point) else {
             return false
         }
-        for index in 0..<stroke.path.count {
-            let strokePoint = stroke.path.point(at: index)
+        for strokePoint in stroke.path {
             let halfWidth = max(strokePoint.size.width, strokePoint.size.height) * 0.5
             let threshold = radius + halfWidth
             let dx = strokePoint.location.x - point.x
@@ -155,3 +154,4 @@ private final class PressureEraserTouchRecognizer: UIGestureRecognizer {
         super.reset()
     }
 }
+
