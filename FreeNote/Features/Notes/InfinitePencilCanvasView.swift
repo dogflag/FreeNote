@@ -118,7 +118,7 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UIScrollViewDelegate, PKCanvasViewDelegate {
         var parent: InfinitePencilCanvasView
-        weak var contentView: UIView?
+        weak var contentView: PaperTiledContentView?
         weak var canvasView: PKCanvasView?
         var lastAppliedData = Data()
         var lastPaperKey = ""
@@ -201,3 +201,4 @@ private final class PaperTiledContentView: UIView {
         backgroundColor = UIColor(patternImage: tile)
     }
 }
+

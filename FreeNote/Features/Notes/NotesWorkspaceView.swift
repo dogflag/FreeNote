@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 struct NotesWorkspaceView: View {
     @EnvironmentObject private var store: FreeNoteStore
@@ -513,7 +513,8 @@ private struct RenameNotebookSheet: View {
             }
             .padding(24)
         }
-        .frame(width: 480, minHeight: 300)
+        .frame(width: 480)
+        .frame(minHeight: 300)
         .background(FNTheme.contentBackground)
         .alert("无法重命名", isPresented: Binding(
             get: { errorMessage != nil },
@@ -536,5 +537,7 @@ private struct RenameNotebookSheet: View {
         }
     }
 }
+
+
 
 
