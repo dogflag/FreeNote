@@ -128,6 +128,7 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         var parent: InfinitePencilCanvasView
         fileprivate weak var contentView: PaperTiledContentView?
         weak var canvasView: PKCanvasView?
+        weak var eraserOverlay: PressureEraserCanvasOverlay?
         var lastAppliedData = Data()
         var lastPaperKey = ""
         var isApplyingExternalDrawing = false
