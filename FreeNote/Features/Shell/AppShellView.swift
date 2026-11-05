@@ -56,9 +56,9 @@ struct AppShellView: View {
                 VStack(spacing: 5) {
                     Text("F")
                         .font(FNTheme.serif(27, weight: .semibold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(FNTheme.selectionText)
                         .frame(width: 42, height: 42)
-                        .background(FNTheme.accent)
+                        .background(FNTheme.selectionFill)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     Text("FreeNote")
                         .font(.system(size: 9, weight: .medium))

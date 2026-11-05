@@ -130,9 +130,9 @@ private struct AttachmentImageThumbnail: View {
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(FNTheme.selectionText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(FNTheme.accent)
+                    .background(FNTheme.selectionFill)
             }
         }
         .frame(width: 34, height: 38)

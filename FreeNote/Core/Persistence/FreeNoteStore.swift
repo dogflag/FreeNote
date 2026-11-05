@@ -905,7 +905,6 @@ final class FreeNoteStore: ObservableObject {
                         .appendingPathComponent(prepared.fileName)
                     try fileManager.createDirectory(at: itemDirectory, withIntermediateDirectories: true)
                     try fileManager.moveItem(at: prepared.stagedURL, to: destinationURL)
-                    movedDirectories.append(itemDirectory)
 
                     switch prepared.destination {
                     case .bookshelf:
@@ -997,6 +996,7 @@ final class FreeNoteStore: ObservableObject {
                         )
                     }
 
+                    movedDirectories.append(itemDirectory)
                     succeeded = true
                     removeItemBestEffort(
                         at: prepared.stagedURL.deletingLastPathComponent(),

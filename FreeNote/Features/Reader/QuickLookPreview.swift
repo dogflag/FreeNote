@@ -53,7 +53,7 @@ struct QuickLookResourceSheet: View {
                 Spacer()
                 Button("完成") { dismiss() }
                     .buttonStyle(.borderedProminent)
-                    .tint(FNTheme.accent)
+                    .tint(FNTheme.selectionFill)
             }
             .padding(.horizontal, 18)
             .frame(height: 58)

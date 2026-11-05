@@ -1,29 +1,54 @@
 import Foundation
 
 enum DocumentClassifier {
+    private static let officeExtensions: Set<String> = [
+        "doc", "docx", "docm",
+        "ppt", "pptx", "pptm",
+        "xls", "xlsx", "xlsm", "xlsb",
+        "odt", "odp", "ods",
+        "pages", "numbers", "key"
+    ]
+
+    private static let imageExtensions: Set<String> = [
+        "png", "jpg", "jpeg", "heic", "heif", "webp",
+        "gif", "tif", "tiff", "bmp"
+    ]
+
+    private static let audioExtensions: Set<String> = [
+        "mp3", "m4a", "wav", "aac", "aiff", "aif",
+        "flac", "ogg", "opus"
+    ]
+
+    private static let textExtensions: Set<String> = [
+        "txt", "md", "markdown", "rtf", "csv", "json", "xml", "html", "htm"
+    ]
+
     static func kind(for url: URL) -> DocumentKind {
-        switch url.pathExtension.lowercased() {
-        case "pdf":
+        let fileExtension = url.pathExtension.lowercased()
+        if fileExtension == "pdf" {
             return .pdf
-        case "epub":
-            return .epub
-        case "doc", "docx", "ppt", "pptx", "xls", "xlsx",
-             "odt", "odp", "ods", "pages", "numbers", "key":
-            return .office
-        case "png", "jpg", "jpeg", "heic", "heif", "webp", "gif", "tif", "tiff", "bmp":
-            return .image
-        case "mp3", "m4a", "wav", "aac", "aiff", "aif", "flac", "ogg", "opus":
-            return .audio
-        case "txt", "md", "markdown", "rtf", "csv", "json", "xml", "html", "htm":
-            return .text
-        default:
-            return .other
         }
+        if fileExtension == "epub" {
+            return .epub
+        }
+        if officeExtensions.contains(fileExtension) {
+            return .office
+        }
+        if imageExtensions.contains(fileExtension) {
+            return .image
+        }
+        if audioExtensions.contains(fileExtension) {
+            return .audio
+        }
+        if textExtensions.contains(fileExtension) {
+            return .text
+        }
+        return .other
     }
 
     static func suggestedDestination(for url: URL) -> ImportDestination {
         switch url.pathExtension.lowercased() {
-        case "pdf", "epub", "ppt", "pptx":
+        case "pdf", "epub", "ppt", "pptx", "pptm":
             return .bookshelf
         default:
             return .library
@@ -37,6 +62,6 @@ enum DocumentClassifier {
     }
 
     static func isBookLike(_ url: URL) -> Bool {
-        ["pdf", "epub", "ppt", "pptx"].contains(url.pathExtension.lowercased())
+        ["pdf", "epub", "ppt", "pptx", "pptm"].contains(url.pathExtension.lowercased())
     }
 }

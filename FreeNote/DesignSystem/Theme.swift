@@ -4,6 +4,8 @@ import UIKit
 enum FNTheme {
     static let accent = adaptive(light: 0x4F6759, dark: 0x8FA99A)
     static let accentSoft = adaptive(light: 0xDCE6DF, dark: 0x304039)
+    static let selectionFill = adaptive(light: 0x3F574B, dark: 0x4F6759)
+    static let selectionText = Color.white
     static let ink = adaptive(light: 0x26322F, dark: 0xE8E5DD)
     static let secondaryInk = adaptive(light: 0x6E7772, dark: 0xAEB7B1)
     static let tertiaryInk = adaptive(light: 0x929991, dark: 0x838C86)

@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct DocumentImportSheet: View {
     @EnvironmentObject private var store: FreeNoteStore
@@ -10,11 +9,11 @@ struct DocumentImportSheet: View {
     let pageID: UUID?
 
     @State private var destination: ImportDestination
-    @State private var showingFileImporter = false
-    @State private var pickedURLs: [URL] = []
+    @State private var showingDocumentPicker = false
+    @State private var pickedFiles: [PickedImportFile] = []
     @State private var isImporting = false
-    @State private var resultMessage: String?
-    @State private var errorMessage: String?
+    @State private var importTask: Task<Void, Never>?
+    @State private var activeAlert: ImportAlert?
 
     init(
         defaultDestination: ImportDestination,
@@ -32,152 +31,214 @@ struct DocumentImportSheet: View {
         _destination = State(initialValue: initialDestination)
     }
 
-    private var allowedTypes: [UTType] {
-        var types: [UTType] = [.pdf, .image, .audio, .plainText]
-        let extensions = ["epub", "ppt", "pptx", "doc", "docx", "md", "markdown"]
-        for fileExtension in extensions {
-            if let type = UTType(filenameExtension: fileExtension), !types.contains(type) {
-                types.append(type)
-            }
-        }
-        return types
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("导入文件")
-                        .font(FNTheme.serif(28, weight: .semibold))
-                        .foregroundStyle(FNTheme.ink)
-                    Text("文件会复制到 FreeNote 沙盒，原文件保持不变。")
-                        .font(.system(size: 12))
-                        .foregroundStyle(FNTheme.secondaryInk)
+        VStack(spacing: 0) {
+            FNModalHeader(
+                title: "导入文件",
+                subtitle: "文件会复制到 FreeNote 沙盒，原文件保持不变。",
+                onClose: {
+                    guard !isImporting else { return }
+                    dismiss()
                 }
-                Spacer()
-                FNIconButton(symbol: "xmark") { dismiss() }
-            }
+            )
 
-            Button {
-                showingFileImporter = true
-            } label: {
-                VStack(spacing: 12) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 28, weight: .light))
-                        .foregroundStyle(FNTheme.accent)
-                    Text(pickedURLs.isEmpty ? "从“文件”选择" : "已选择 \(pickedURLs.count) 个文件")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(FNTheme.ink)
-                    Text(pickedURLs.isEmpty ? "支持 PDF、EPUB、PPT、Word、图片、音频和文本" : pickedURLs.map(\.lastPathComponent).joined(separator: "、"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(FNTheme.tertiaryInk)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 150)
-                .background(FNTheme.accentSoft.opacity(0.45))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(FNTheme.accent.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-                )
-            }
-            .buttonStyle(.plain)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    pickerButton
 
-            HStack(spacing: 7) {
-                ForEach(["PDF", "Word / PPT", "EPUB", "图片", "音频"], id: \.self) { type in
-                    Text(type)
-                        .font(.system(size: 9, weight: .medium))
+                    if pickedFiles.isEmpty {
+                        formatLegend
+                    } else {
+                        selectedFileList
+                    }
+
+                    Rectangle().fill(FNTheme.divider).frame(height: 1)
+
+                    Text("导入到")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(FNTheme.secondaryInk)
-                        .padding(.horizontal, 9)
-                        .frame(height: 24)
-                        .background(FNTheme.sidebar)
-                        .clipShape(Capsule())
+
+                    VStack(spacing: 8) {
+                        destinationRow(
+                            .bookshelf,
+                            title: "书架",
+                            subtitle: "适合 PDF、电子书和课件",
+                            symbol: "books.vertical"
+                        )
+                        destinationRow(
+                            .library,
+                            title: "资源库",
+                            subtitle: "适合图片、音频、表格和零散资料",
+                            symbol: "folder"
+                        )
+                        if allowsCurrentPage {
+                            destinationRow(
+                                .currentPage,
+                                title: "当前页面",
+                                subtitle: "作为当前笔记页面的附件插入",
+                                symbol: "doc.badge.plus"
+                            )
+                        }
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
             }
 
             Rectangle().fill(FNTheme.divider).frame(height: 1)
 
-            Text("导入到")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(FNTheme.secondaryInk)
-
-            VStack(spacing: 8) {
-                destinationRow(
-                    .bookshelf,
-                    title: "书架",
-                    subtitle: "适合 PDF、电子书和课件",
-                    symbol: "books.vertical"
-                )
-                destinationRow(
-                    .library,
-                    title: "资源库",
-                    subtitle: "适合图片、音频和零散资料",
-                    symbol: "folder"
-                )
-                if allowsCurrentPage {
-                    destinationRow(
-                        .currentPage,
-                        title: "当前页面",
-                        subtitle: "作为当前笔记页面的附件插入",
-                        symbol: "doc.badge.plus"
-                    )
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            HStack {
-                if isImporting {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text("正在复制并识别文件…")
-                        .font(.system(size: 10))
-                        .foregroundStyle(FNTheme.secondaryInk)
-                }
-                Spacer()
-                Button("取消") { dismiss() }
-                    .buttonStyle(.bordered)
-                Button("开始导入", action: startImport)
-                    .buttonStyle(.borderedProminent)
-                    .tint(FNTheme.accent)
-                    .disabled(pickedURLs.isEmpty || isImporting)
-            }
+            importFooter
         }
-        .padding(24)
-        .frame(minWidth: 560, minHeight: 600)
+        .frame(minWidth: 620, minHeight: 680)
         .background(FNTheme.contentBackground)
-        .fileImporter(
-            isPresented: $showingFileImporter,
-            allowedContentTypes: allowedTypes,
-            allowsMultipleSelection: true
-        ) { result in
-            switch result {
-            case .success(let urls):
-                pickedURLs = urls
-            case .failure(let error):
-                errorMessage = error.localizedDescription
+        .interactiveDismissDisabled(isImporting)
+        .onDisappear {
+            importTask?.cancel()
+            importTask = nil
+        }
+        .sheet(isPresented: $showingDocumentPicker) {
+            DocumentPickerView(
+                onPick: { urls in
+                    showingDocumentPicker = false
+                    mergePickedFiles(urls)
+                },
+                onCancel: {
+                    showingDocumentPicker = false
+                }
+            )
+            .ignoresSafeArea()
+        }
+        .alert(item: $activeAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("好")) {
+                    if alert.dismissSheet {
+                        dismiss()
+                    }
+                }
+            )
+        }
+    }
+
+    private var pickerButton: some View {
+        Button {
+            showingDocumentPicker = true
+        } label: {
+            VStack(spacing: 12) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 29, weight: .light))
+                    .foregroundStyle(FNTheme.accent)
+                Text(pickedFiles.isEmpty ? "从“文件”选择" : "继续选择文件")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(FNTheme.ink)
+                Text("支持一次选择多个文件，确认后才能开始导入")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FNTheme.tertiaryInk)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 142)
+            .contentShape(Rectangle())
+            .background(FNTheme.accentSoft.opacity(0.42))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        FNTheme.accent.opacity(0.34),
+                        style: StrokeStyle(lineWidth: 1, dash: [6, 5])
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isImporting)
+    }
+
+    private var formatLegend: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("可导入格式")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(FNTheme.secondaryInk)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 82), spacing: 7)],
+                alignment: .leading,
+                spacing: 7
+            ) {
+                ForEach(["PDF", "EPUB", "Word", "PPT", "Excel", "CSV", "TXT / MD", "图片", "音频"], id: \.self) { type in
+                    Text(type)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(FNTheme.secondaryInk)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 25)
+                        .background(FNTheme.sidebar)
+                        .clipShape(Capsule())
+                }
             }
         }
-        .alert("导入完成", isPresented: Binding(
-            get: { resultMessage != nil },
-            set: { if !$0 { resultMessage = nil } }
-        )) {
-            Button("好") {
-                resultMessage = nil
-                dismiss()
+    }
+
+    private var selectedFileList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("已选择 \(pickedFiles.count) 个文件")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FNTheme.ink)
+                Spacer()
+                Button("全部移除") {
+                    pickedFiles.removeAll()
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(FNTheme.danger)
+                .buttonStyle(.plain)
+                .disabled(isImporting)
             }
-        } message: {
-            Text(resultMessage ?? "")
-        }
-        .alert("导入失败", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("好", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
+
+            VStack(spacing: 0) {
+                ForEach(pickedFiles) { file in
+                    HStack(spacing: 10) {
+                        Image(systemName: file.symbol)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(FNTheme.accent)
+                            .frame(width: 36, height: 36)
+                            .background(FNTheme.accentSoft)
+                            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(file.name)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(FNTheme.ink)
+                                .lineLimit(1)
+                            Text(file.typeLabel)
+                                .font(.system(size: 8, weight: .medium))
+                                .foregroundStyle(FNTheme.tertiaryInk)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Button {
+                            remove(file)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 15))
+                                .foregroundStyle(FNTheme.tertiaryInk)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isImporting)
+                    }
+                    .padding(.horizontal, 11)
+                    .frame(height: 54)
+
+                    if file.id != pickedFiles.last?.id {
+                        Rectangle().fill(FNTheme.divider).frame(height: 1)
+                    }
+                }
+            }
+            .background(FNTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(FNTheme.divider, lineWidth: 1)
+            )
         }
     }
 
@@ -188,9 +249,9 @@ struct DocumentImportSheet: View {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(destination == value ? FNTheme.accent : FNTheme.secondaryInk)
+                    .foregroundStyle(destination == value ? FNTheme.selectionText : FNTheme.secondaryInk)
                     .frame(width: 34, height: 34)
-                    .background(destination == value ? FNTheme.accentSoft : FNTheme.sidebar)
+                    .background(destination == value ? FNTheme.selectionFill : FNTheme.sidebar)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
@@ -203,47 +264,149 @@ struct DocumentImportSheet: View {
                 Spacer()
                 Image(systemName: destination == value ? "largecircle.fill.circle" : "circle")
                     .font(.system(size: 16))
-                    .foregroundStyle(destination == value ? FNTheme.accent : FNTheme.tertiaryInk)
+                    .foregroundStyle(destination == value ? FNTheme.selectionFill : FNTheme.tertiaryInk)
             }
             .padding(11)
-            .background(destination == value ? FNTheme.accentSoft.opacity(0.52) : FNTheme.card)
+            .background(destination == value ? FNTheme.accentSoft.opacity(0.56) : FNTheme.card)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(destination == value ? FNTheme.accent.opacity(0.35) : FNTheme.divider, lineWidth: 1)
+                    .stroke(destination == value ? FNTheme.accent.opacity(0.4) : FNTheme.divider, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .disabled(isImporting)
+    }
+
+    private var importFooter: some View {
+        HStack(spacing: 12) {
+            if isImporting {
+                ProgressView()
+                    .controlSize(.small)
+                Text("正在复制并识别文件…")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FNTheme.secondaryInk)
+            } else {
+                Text(pickedFiles.isEmpty ? "请先选择文件" : "将导入 \(pickedFiles.count) 个文件")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(FNTheme.tertiaryInk)
+            }
+
+            Spacer()
+
+            Button("取消") { dismiss() }
+                .buttonStyle(.bordered)
+                .disabled(isImporting)
+            Button("开始导入", action: startImport)
+                .buttonStyle(.borderedProminent)
+                .tint(FNTheme.selectionFill)
+                .disabled(pickedFiles.isEmpty || isImporting)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background(FNTheme.card)
+    }
+
+    private func mergePickedFiles(_ urls: [URL]) {
+        var knownPaths = Set(pickedFiles.map { $0.url.standardizedFileURL.path })
+        for url in urls {
+            let standardized = url.standardizedFileURL
+            guard !knownPaths.contains(standardized.path) else { continue }
+            knownPaths.insert(standardized.path)
+            pickedFiles.append(PickedImportFile(url: standardized))
+        }
+    }
+
+    private func remove(_ file: PickedImportFile) {
+        pickedFiles.removeAll { $0.id == file.id }
     }
 
     private func startImport() {
-        guard !pickedURLs.isEmpty else { return }
+        guard !isImporting, !pickedFiles.isEmpty else { return }
         isImporting = true
-        Task {
+        let urls = pickedFiles.map(\.url)
+        importTask = Task {
             let results: [ImportResult]
             if destination == .currentPage, let notebookID, let pageID {
-                results = await store.importFiles(pickedURLs, notebookID: notebookID, pageID: pageID)
+                results = await store.importFiles(urls, notebookID: notebookID, pageID: pageID)
             } else if destination == .currentPage {
+                importTask = nil
                 isImporting = false
-                errorMessage = "当前页面信息已失效，请重新打开笔记后再导入。"
+                activeAlert = ImportAlert(
+                    title: "导入失败",
+                    message: "当前页面信息已失效，请重新打开笔记后再导入。",
+                    dismissSheet: false
+                )
                 return
             } else {
-                results = await store.importFiles(pickedURLs, destination: destination)
+                results = await store.importFiles(urls, destination: destination)
             }
 
+            guard !Task.isCancelled else { return }
+            importTask = nil
             isImporting = false
+
             let succeeded = results.filter(\.success).count
-            let failed = results.filter { !$0.success }
+            let failedIndices = results.indices.filter { !results[$0].success }
+            let failed = failedIndices.compactMap { index in
+                results.indices.contains(index) ? results[index] : nil
+            }
             let warnings = results.compactMap(\.warningMessage)
             let warningText = warnings.isEmpty ? "" : "\n\n目录识别提示：\n" + warnings.prefix(5).joined(separator: "\n")
-            if failed.isEmpty {
-                resultMessage = "已成功导入 \(succeeded) 个文件。\(warningText)"
+
+            if failedIndices.isEmpty {
+                pickedFiles.removeAll()
+                activeAlert = ImportAlert(
+                    title: "导入完成",
+                    message: "已成功导入 \(succeeded) 个文件。\(warningText)",
+                    dismissSheet: true
+                )
             } else {
+                pickedFiles = failedIndices.compactMap { index in
+                    pickedFiles.indices.contains(index) ? pickedFiles[index] : nil
+                }
                 let details = failed.prefix(3).map { item in
                     "\(item.title)：\(item.errorMessage ?? "未知错误")"
                 }.joined(separator: "\n")
-                resultMessage = "成功 \(succeeded) 个，失败 \(failed.count) 个。\n\(details)\(warningText)"
+                activeAlert = ImportAlert(
+                    title: "部分文件导入失败",
+                    message: "成功 \(succeeded) 个，失败 \(failed.count) 个。\n\(details)\(warningText)",
+                    dismissSheet: false
+                )
             }
         }
     }
+}
+
+private struct PickedImportFile: Identifiable {
+    let id = UUID()
+    let url: URL
+
+    var name: String { url.lastPathComponent }
+    var fileExtension: String { url.pathExtension.lowercased() }
+
+    var typeLabel: String {
+        let label = fileExtension.isEmpty ? "文件" : fileExtension.uppercased()
+        return "\(label) · 待确认"
+    }
+
+    var symbol: String {
+        switch fileExtension {
+        case "pdf": return "doc.richtext"
+        case "epub": return "book.closed"
+        case "doc", "docx", "docm": return "doc.text"
+        case "ppt", "pptx", "pptm": return "rectangle.on.rectangle"
+        case "xls", "xlsx", "xlsm", "xlsb", "csv": return "tablecells"
+        case "png", "jpg", "jpeg", "heic", "heif", "webp", "gif", "tif", "tiff": return "photo"
+        case "mp3", "m4a", "wav", "aac", "flac", "ogg": return "waveform"
+        default: return "doc"
+        }
+    }
+}
+
+private struct ImportAlert: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    let dismissSheet: Bool
 }

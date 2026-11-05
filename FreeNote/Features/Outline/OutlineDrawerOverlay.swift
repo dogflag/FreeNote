@@ -108,7 +108,7 @@ struct OutlineDrawerOverlay: View {
                 .foregroundStyle(FNTheme.tertiaryInk)
             Button("保存") { save() }
                 .buttonStyle(.borderedProminent)
-                .tint(FNTheme.accent)
+                .tint(FNTheme.selectionFill)
                 .controlSize(.small)
             FNIconButton(symbol: "xmark") { close() }
         }

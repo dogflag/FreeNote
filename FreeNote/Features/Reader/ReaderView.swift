@@ -45,7 +45,7 @@ struct ReaderView: View {
                         )
                         Button("返回书架") { dismiss() }
                             .buttonStyle(.borderedProminent)
-                            .tint(FNTheme.accent)
+                            .tint(FNTheme.selectionFill)
                     }
                     .padding(30)
                 }

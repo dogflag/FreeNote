@@ -14,8 +14,11 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Rectangle().fill(FNTheme.divider).frame(height: 1)
+            FNModalHeader(
+                title: "设置",
+                subtitle: "调整书写、阅读与本地存储行为。",
+                onClose: { dismiss() }
+            )
             ScrollView {
                 VStack(spacing: 13) {
                     appearanceSection
@@ -43,24 +46,6 @@ struct SettingsView: View {
         } message: {
             Text(saveError ?? "")
         }
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("设置")
-                    .font(FNTheme.serif(28, weight: .semibold))
-                    .foregroundStyle(FNTheme.ink)
-                Text("调整书写、阅读与本地存储行为。")
-                    .font(.system(size: 11))
-                    .foregroundStyle(FNTheme.tertiaryInk)
-            }
-            Spacer()
-            FNIconButton(symbol: "xmark") { dismiss() }
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
-        .background(FNTheme.card)
     }
 
     private var appearanceSection: some View {
@@ -179,7 +164,7 @@ struct SettingsView: View {
         settingsCard(title: "关于 FreeNote", symbol: "info.circle") {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("FreeNote 0.1.0")
+                    Text("FreeNote 0.2.0")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(FNTheme.ink)
                     Text("本地优先的手写笔记与阅读工具")
@@ -219,10 +204,10 @@ struct SettingsView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(selected ? FNTheme.accent : FNTheme.secondaryInk)
+                .foregroundStyle(selected ? FNTheme.selectionText : FNTheme.secondaryInk)
                 .padding(.horizontal, 12)
                 .frame(height: 28)
-                .background(selected ? FNTheme.accentSoft : FNTheme.sidebar)
+                .background(selected ? FNTheme.selectionFill : FNTheme.sidebar)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -269,3 +254,4 @@ extension ReadingFont {
         }
     }
 }
+

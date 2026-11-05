@@ -62,10 +62,10 @@ struct FNTopActionButton: View {
         Button(action: action) {
             Label(title, systemImage: symbol)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(prominent ? Color.white : FNTheme.ink)
+                .foregroundStyle(prominent ? FNTheme.selectionText : FNTheme.ink)
                 .padding(.horizontal, 15)
                 .frame(height: 38)
-                .background(prominent ? FNTheme.accent : FNTheme.card)
+                .background(prominent ? FNTheme.selectionFill : FNTheme.card)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -85,13 +85,51 @@ struct FNFilterChip: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(isSelected ? Color.white : FNTheme.secondaryInk)
+                .foregroundStyle(isSelected ? FNTheme.selectionText : FNTheme.secondaryInk)
                 .padding(.horizontal, 14)
                 .frame(height: 30)
-                .background(isSelected ? FNTheme.ink : FNTheme.sidebar.opacity(0.72))
+                .background(isSelected ? FNTheme.selectionFill : FNTheme.sidebar.opacity(0.72))
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct FNModalHeader: View {
+    let title: String
+    let subtitle: String
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(title)
+                    .font(FNTheme.serif(30, weight: .semibold))
+                    .foregroundStyle(FNTheme.ink)
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(FNTheme.secondaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 16)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(FNTheme.secondaryInk)
+                    .frame(width: 42, height: 42)
+                    .background(FNTheme.sidebar)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("关闭")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 22)
+        .frame(minHeight: 106)
+        .background(FNTheme.card)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(FNTheme.divider).frame(height: 1)
+        }
     }
 }
 
@@ -182,7 +220,7 @@ struct FNEmptyState: View {
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.borderedProminent)
-                    .tint(FNTheme.accent)
+                    .tint(FNTheme.selectionFill)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -418,7 +456,7 @@ struct FNRecoveryReadOnlyView: View {
 
             Button("重新读取", action: onRetry)
                 .buttonStyle(.borderedProminent)
-                .tint(FNTheme.accent)
+                .tint(FNTheme.selectionFill)
                 .controlSize(.small)
         }
         .padding(18)

@@ -31,6 +31,8 @@ enum DrawingTool: String, CaseIterable, Identifiable {
 
 final class PencilCanvasController: ObservableObject {
     weak var canvasView: PKCanvasView?
+    weak var navigationScrollView: UIScrollView?
+    @Published private(set) var zoomScale: CGFloat = 1.0
 
     func undo() {
         canvasView?.undoManager?.undo()
@@ -52,6 +54,40 @@ final class PencilCanvasController: ObservableObject {
         guard let canvasView else { return }
         canvasView.drawing = PKDrawing()
         canvasView.delegate?.canvasViewDrawingDidChange?(canvasView)
+    }
+
+    func zoomIn() {
+        setZoom((navigationScrollView?.zoomScale ?? zoomScale) * 1.2)
+    }
+
+    func zoomOut() {
+        setZoom((navigationScrollView?.zoomScale ?? zoomScale) / 1.2)
+    }
+
+    func recenter(animated: Bool = true) {
+        guard let scrollView = navigationScrollView else { return }
+        let drawingBounds = canvasView?.drawing.bounds ?? .null
+        let target: CGPoint
+        if !drawingBounds.isNull, !drawingBounds.isEmpty {
+            target = CGPoint(x: drawingBounds.midX, y: drawingBounds.midY)
+        } else {
+            let canvasSize = canvasView?.bounds.size ?? scrollView.contentSize
+            target = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        }
+        let x = max(target.x * scrollView.zoomScale - scrollView.bounds.width / 2, 0)
+        let y = max(target.y * scrollView.zoomScale - scrollView.bounds.height / 2, 0)
+        scrollView.setContentOffset(CGPoint(x: x, y: y), animated: animated)
+    }
+
+    func updateZoomScale(_ value: CGFloat) {
+        zoomScale = value
+    }
+
+    private func setZoom(_ value: CGFloat) {
+        guard let scrollView = navigationScrollView else { return }
+        let bounded = min(max(value, scrollView.minimumZoomScale), scrollView.maximumZoomScale)
+        scrollView.setZoomScale(bounded, animated: true)
+        zoomScale = bounded
     }
 }
 
@@ -78,6 +114,7 @@ struct PencilCanvasView: UIViewRepresentable {
         canvas.tool = makeTool()
         canvas.delegate = context.coordinator
         controller.canvasView = canvas
+        controller.navigationScrollView = nil
         context.coordinator.lastAppliedData = drawingData
         return canvas
     }
@@ -102,20 +139,7 @@ struct PencilCanvasView: UIViewRepresentable {
     }
 
     private func makeTool() -> PKTool {
-        switch tool {
-        case .pen:
-            return PKInkingTool(.pen, color: color, width: lineWidth)
-        case .highlighter:
-            return PKInkingTool(.marker, color: color.withAlphaComponent(0.42), width: max(lineWidth * 3, 12))
-        case .eraser:
-            if #available(iOS 16.4, *) {
-                return PKEraserTool(.bitmap, width: max(lineWidth * 3, 14))
-            } else {
-                return PKEraserTool(.bitmap)
-            }
-        case .lasso:
-            return PKLassoTool()
-        }
+        tool.makePencilKitTool(color: color, lineWidth: lineWidth)
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
@@ -136,3 +160,23 @@ struct PencilCanvasView: UIViewRepresentable {
     }
 }
 
+
+
+extension DrawingTool {
+    func makePencilKitTool(color: UIColor, lineWidth: CGFloat) -> PKTool {
+        switch self {
+        case .pen:
+            return PKInkingTool(.pen, color: color, width: lineWidth)
+        case .highlighter:
+            return PKInkingTool(.marker, color: color.withAlphaComponent(0.42), width: max(lineWidth * 3, 12))
+        case .eraser:
+            if #available(iOS 16.4, *) {
+                return PKEraserTool(.bitmap, width: max(lineWidth * 3, 14))
+            } else {
+                return PKEraserTool(.bitmap)
+            }
+        case .lasso:
+            return PKLassoTool()
+        }
+    }
+}

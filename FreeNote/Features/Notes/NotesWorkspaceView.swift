@@ -90,9 +90,9 @@ struct NotesWorkspaceView: View {
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(FNTheme.selectionText)
                             .frame(width: 38, height: 38)
-                            .background(FNTheme.accent)
+                            .background(FNTheme.selectionFill)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -330,91 +330,86 @@ private struct NewNotebookSheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("新建笔记")
-                        .font(FNTheme.serif(28, weight: .semibold))
-                        .foregroundStyle(FNTheme.ink)
-                    Text("选择一种适合当前场景的页面。")
-                        .font(.system(size: 12))
+        VStack(spacing: 0) {
+            FNModalHeader(
+                title: "新建笔记",
+                subtitle: "选择一种适合当前场景的页面。",
+                onClose: { dismiss() }
+            )
+
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("笔记名称")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(FNTheme.secondaryInk)
+                    TextField("未命名笔记", text: $title)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14))
+                        .padding(.horizontal, 13)
+                        .frame(height: 40)
+                        .background(FNTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .stroke(FNTheme.divider, lineWidth: 1)
+                        )
                 }
-                Spacer()
-                FNIconButton(symbol: "xmark") { dismiss() }
-            }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("笔记名称")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(FNTheme.secondaryInk)
-                TextField("未命名笔记", text: $title)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .padding(.horizontal, 13)
-                    .frame(height: 40)
-                    .background(FNTheme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .stroke(FNTheme.divider, lineWidth: 1)
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("笔记类型")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(FNTheme.secondaryInk)
-                HStack(spacing: 10) {
-                    ForEach(NotebookKind.allCases) { item in
-                        notebookKindCard(item)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("纸张模板")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(FNTheme.secondaryInk)
-                HStack(spacing: 8) {
-                    ForEach(PaperStyle.allCases) { style in
-                        Button {
-                            paperStyle = style
-                        } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: style.fnSymbol)
-                                    .font(.system(size: 16, weight: .regular))
-                                Text(style.fnTitle)
-                                    .font(.system(size: 10, weight: .medium))
-                            }
-                            .foregroundStyle(paperStyle == style ? FNTheme.accent : FNTheme.secondaryInk)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 62)
-                            .background(paperStyle == style ? FNTheme.accentSoft : FNTheme.card)
-                            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                    .stroke(paperStyle == style ? FNTheme.accent.opacity(0.35) : FNTheme.divider, lineWidth: 1)
-                            )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("笔记类型")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FNTheme.secondaryInk)
+                    HStack(spacing: 10) {
+                        ForEach(NotebookKind.allCases) { item in
+                            notebookKindCard(item)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
-            }
 
-            Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("纸张模板")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FNTheme.secondaryInk)
+                    HStack(spacing: 8) {
+                        ForEach(PaperStyle.allCases) { style in
+                            Button {
+                                paperStyle = style
+                            } label: {
+                                VStack(spacing: 6) {
+                                    Image(systemName: style.fnSymbol)
+                                        .font(.system(size: 16, weight: .regular))
+                                    Text(style.fnTitle)
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                                .foregroundStyle(paperStyle == style ? FNTheme.accent : FNTheme.secondaryInk)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 62)
+                                .background(paperStyle == style ? FNTheme.accentSoft : FNTheme.card)
+                                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                        .stroke(paperStyle == style ? FNTheme.accent.opacity(0.35) : FNTheme.divider, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
 
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }
-                    .buttonStyle(.bordered)
-                Button("创建笔记", action: createNotebook)
-                    .buttonStyle(.borderedProminent)
-                    .tint(FNTheme.accent)
+                Spacer(minLength: 0)
+
+                HStack {
+                    Spacer()
+                    Button("取消") { dismiss() }
+                        .buttonStyle(.bordered)
+                    Button("创建笔记", action: createNotebook)
+                        .buttonStyle(.borderedProminent)
+                        .tint(FNTheme.selectionFill)
+                }
             }
+            .padding(26)
         }
-        .padding(26)
-        .frame(minWidth: 580, minHeight: 520)
+        .frame(minWidth: 620, minHeight: 620)
         .background(FNTheme.contentBackground)
         .alert("无法创建笔记", isPresented: Binding(
             get: { errorMessage != nil },
@@ -487,32 +482,38 @@ private struct RenameNotebookSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("重命名笔记")
-                .font(FNTheme.serif(24, weight: .semibold))
-                .foregroundStyle(FNTheme.ink)
-            TextField("笔记名称", text: $title)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .padding(.horizontal, 13)
-                .frame(height: 42)
-                .background(FNTheme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(FNTheme.divider, lineWidth: 1)
-                )
-            HStack {
-                Spacer()
-                Button("取消") { dismiss() }
-                    .buttonStyle(.bordered)
-                Button("保存", action: rename)
-                    .buttonStyle(.borderedProminent)
-                    .tint(FNTheme.accent)
+        VStack(spacing: 0) {
+            FNModalHeader(
+                title: "重命名笔记",
+                subtitle: "只修改名称，不会影响页面、附件与大纲。",
+                onClose: { dismiss() }
+            )
+
+            VStack(alignment: .leading, spacing: 18) {
+                TextField("笔记名称", text: $title)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 14))
+                    .padding(.horizontal, 13)
+                    .frame(height: 42)
+                    .background(FNTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(FNTheme.divider, lineWidth: 1)
+                    )
+
+                HStack {
+                    Spacer()
+                    Button("取消") { dismiss() }
+                        .buttonStyle(.bordered)
+                    Button("保存", action: rename)
+                        .buttonStyle(.borderedProminent)
+                        .tint(FNTheme.selectionFill)
+                }
             }
+            .padding(24)
         }
-        .padding(24)
-        .frame(width: 420)
+        .frame(width: 480, minHeight: 300)
         .background(FNTheme.contentBackground)
         .alert("无法重命名", isPresented: Binding(
             get: { errorMessage != nil },
