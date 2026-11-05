@@ -115,7 +115,7 @@ struct DocumentPickerPresenter: UIViewControllerRepresentable {
             controller.delegate = self
             controller.allowsMultipleSelection = true
             controller.modalPresentationStyle = .formSheet
-            controller.presentationController?.delegate = self
+            controller?.presentationController?.delegate = self
             picker = controller
             isPresenting = true
 
@@ -130,7 +130,7 @@ struct DocumentPickerPresenter: UIViewControllerRepresentable {
                     return
                 }
                 if host?.presentedViewController === controller {
-                    controller.presentationController?.delegate = self
+                    controller?.presentationController?.delegate = self
                     self.attemptCount = 0
                 } else {
                     self.isPresenting = false
@@ -198,4 +198,5 @@ struct DocumentPickerPresenter: UIViewControllerRepresentable {
         }
     }
 }
+
 
