@@ -115,7 +115,6 @@ struct DocumentPickerPresenter: UIViewControllerRepresentable {
             controller.delegate = self
             controller.allowsMultipleSelection = true
             controller.modalPresentationStyle = .formSheet
-            controller?.presentationController?.delegate = self
             picker = controller
             isPresenting = true
 
