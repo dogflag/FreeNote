@@ -357,11 +357,11 @@ struct OutlineDrawerOverlay: View {
     }
 
     private func addChild() {
-        guard let selectedID else {
+        guard let currentID = selectedID else {
             addRoot()
             return
         }
-        if let newID = OutlineTreeOperations.addChild(to: selectedID, in: &draft, page: initialPage, pageCount: pageCount) {
+        if let newID = OutlineTreeOperations.addChild(to: currentID, in: &draft, page: initialPage, pageCount: pageCount) {
             selectedID = newID
             expandedIDs.insert(newID)
         }
@@ -421,3 +421,4 @@ struct OutlineDrawerOverlay: View {
         }
     }
 }
+

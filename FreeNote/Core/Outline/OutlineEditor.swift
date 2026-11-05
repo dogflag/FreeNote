@@ -173,8 +173,8 @@ enum OutlineEditor {
     }
 
     static func outdent(nodeID: UUID, in nodes: [OutlineNode]) throws -> [OutlineNode] {
-        guard let location = location(of: nodeID, in: nodes),
-              let directParentID = location.parentID,
+        guard let nodeLocation = location(of: nodeID, in: nodes),
+              let directParentID = nodeLocation.parentID,
               let parentLocation = location(of: directParentID, in: nodes) else {
             return nodes
         }
@@ -312,7 +312,7 @@ enum OutlineEditor {
             }
             if !entry.node.children.isEmpty {
                 let childEntries = entry.node.children.enumerated().reversed().map {
-                    (child: $0.element,
+                    (node: $0.element,
                      parentID: entry.node.id,
                      index: $0.offset,
                      path: entry.path + [$0.element])
@@ -455,3 +455,4 @@ enum OutlineEditor {
         return replace(nodes, pathIndex: 0)
     }
 }
+
