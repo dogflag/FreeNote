@@ -55,6 +55,13 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         canvas.delegate = context.coordinator
         contentView.addSubview(canvas)
 
+        let eraserOverlay = PressureEraserCanvasOverlay(frame: contentView.bounds)
+        eraserOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        eraserOverlay.canvasView = canvas
+        eraserOverlay.setEraserMode(tool == .eraser, width: lineWidth)
+        contentView.addSubview(eraserOverlay)
+        context.coordinator.eraserOverlay = eraserOverlay
+
         scrollView.addSubview(contentView)
         scrollView.contentSize = Self.contentSize
 
@@ -79,6 +86,7 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         guard let canvas = context.coordinator.canvasView,
               let contentView = context.coordinator.contentView else { return }
 
+        context.coordinator.eraserOverlay?.setEraserMode(tool == .eraser, width: lineWidth)
         controller.canvasView = canvas
         controller.navigationScrollView = scrollView
         scrollView.panGestureRecognizer.allowedTouchTypes = [

@@ -132,6 +132,157 @@ final class BatchImportTests: XCTestCase {
         XCTAssertEqual(store.resources.map(\.kind), [.office, .office, .office, .office, .text])
     }
 
+    @MainActor
+    func testMultiDestinationImportsSameURLsIndependentlyIntoLibraryAndBookshelf() async throws {
+        let first = try makeFile(name: "multi-first.txt", contents: Data("first".utf8))
+        let second = try makeFile(name: "multi-second.txt", contents: Data("second".utf8))
+        let store = FreeNoteStore(rootURL: rootURL)
+
+        let results = await store.importFiles(
+            [first, second],
+            destinations: [.library, .bookshelf]
+        )
+
+        XCTAssertEqual(results.count, 4)
+        XCTAssertEqual(
+            results.map(\.destination),
+            [.bookshelf, .bookshelf, .library, .library]
+        )
+        XCTAssertEqual(
+            results.map(\.title),
+            ["multi-first", "multi-second", "multi-first", "multi-second"]
+        )
+        XCTAssertTrue(results.allSatisfy { $0.success })
+        XCTAssertEqual(store.books.map(\.title), ["multi-first", "multi-second"])
+        XCTAssertEqual(store.resources.map(\.title), ["multi-first", "multi-second"])
+
+        let itemIDs = results.compactMap(\.itemID)
+        XCTAssertEqual(itemIDs.count, 4)
+        XCTAssertEqual(Set(itemIDs).count, 4)
+    }
+
+    @MainActor
+    func testMultiDestinationWithCurrentPageBindsOnlyCurrentPageResults() async throws {
+        let first = try makeFile(name: "all-first.png", contents: Data([11]))
+        let second = try makeFile(name: "all-second.png", contents: Data([22]))
+        let store = FreeNoteStore(rootURL: rootURL)
+        let notebook = try store.createNotebook(title: "三目的地", kind: .paged, paperStyle: .blank)
+        let page = try XCTUnwrap(notebook.pages.first)
+
+        let results = await store.importFiles(
+            [first, second],
+            destinations: [.library, .bookshelf, .currentPage],
+            notebookID: notebook.id,
+            pageID: page.id
+        )
+
+        XCTAssertEqual(results.count, 6)
+        XCTAssertEqual(
+            results.map(\.destination),
+            [
+                .bookshelf, .bookshelf,
+                .library, .library,
+                .currentPage, .currentPage
+            ]
+        )
+        XCTAssertTrue(results.allSatisfy { $0.success })
+        XCTAssertEqual(store.books.count, 2)
+        XCTAssertEqual(store.resources.count, 4)
+
+        let currentPageResults = results.filter { $0.destination == .currentPage }
+        let currentPageIDs = currentPageResults.compactMap(\.itemID)
+        XCTAssertEqual(currentPageIDs.count, 2)
+        let attachments = try store.attachments(forNotebookID: notebook.id, pageID: page.id)
+        XCTAssertEqual(attachments.map(\.id), currentPageIDs)
+        XCTAssertTrue(
+            currentPageResults.allSatisfy {
+                $0.notebookID == notebook.id && $0.pageID == page.id
+            }
+        )
+
+        let allItemIDs = results.compactMap(\.itemID)
+        XCTAssertEqual(allItemIDs.count, 6)
+        XCTAssertEqual(Set(allItemIDs).count, 6)
+    }
+
+    @MainActor
+    func testMissingCurrentPageContextFailsOnlyCurrentPageDestination() async throws {
+        let first = try makeFile(name: "context-first.txt", contents: Data("first".utf8))
+        let second = try makeFile(name: "context-second.txt", contents: Data("second".utf8))
+        let store = FreeNoteStore(rootURL: rootURL)
+
+        let results = await store.importFiles(
+            [first, second],
+            destinations: [.library, .currentPage]
+        )
+
+        XCTAssertEqual(results.count, 4)
+        XCTAssertEqual(
+            results.map(\.destination),
+            [.library, .library, .currentPage, .currentPage]
+        )
+        XCTAssertEqual(results.map(\.success), [true, true, false, false])
+        XCTAssertEqual(store.resources.count, 2)
+        XCTAssertTrue(store.books.isEmpty)
+
+        let currentPageResults = results.filter { $0.destination == .currentPage }
+        XCTAssertTrue(currentPageResults.allSatisfy { $0.itemID == nil })
+        XCTAssertTrue(currentPageResults.allSatisfy { $0.errorMessage != nil })
+    }
+
+    @MainActor
+    func testPartialFileFailureIsScopedToEachDestination() async throws {
+        let first = try makeFile(name: "scope-first.txt", contents: Data("first".utf8))
+        let invalidPDF = try makeFile(name: "scope-broken.pdf", contents: Data("bad".utf8))
+        let second = try makeFile(name: "scope-second.txt", contents: Data("second".utf8))
+        let store = FreeNoteStore(rootURL: rootURL)
+
+        let results = await store.importFiles(
+            [first, invalidPDF, second],
+            destinations: [.library, .bookshelf]
+        )
+
+        XCTAssertEqual(results.count, 6)
+        XCTAssertEqual(
+            results.map(\.destination),
+            [
+                .bookshelf, .bookshelf, .bookshelf,
+                .library, .library, .library
+            ]
+        )
+        XCTAssertEqual(
+            results.map(\.success),
+            [true, false, true, true, true, true]
+        )
+        XCTAssertEqual(store.books.map(\.title), ["scope-first", "scope-second"])
+        XCTAssertEqual(
+            store.resources.map(\.title),
+            ["scope-first", "scope-broken", "scope-second"]
+        )
+        XCTAssertNil(results[1].itemID)
+        XCTAssertNotNil(results[1].errorMessage)
+    }
+
+    @MainActor
+    func testFinalMetadataWriteFailureRollsBackCopiedFile() async throws {
+        let source = try makeFile(name: "rollback.txt", contents: Data("rollback".utf8))
+        let store = FreeNoteStore(rootURL: rootURL)
+        let storeURL = rootURL.appendingPathComponent("store.json")
+        try FileManager.default.removeItem(at: storeURL)
+        try FileManager.default.createDirectory(at: storeURL, withIntermediateDirectories: false)
+
+        let results = await store.importFiles([source], destinations: [.library])
+
+        XCTAssertEqual(results.count, 1)
+        XCTAssertFalse(results[0].success)
+        XCTAssertTrue(store.resources.isEmpty)
+        let libraryEntries = try FileManager.default.contentsOfDirectory(
+            at: rootURL.appendingPathComponent("Library", isDirectory: true),
+            includingPropertiesForKeys: nil
+        )
+        XCTAssertTrue(libraryEntries.isEmpty)
+    }
+
     private func makeFile(name: String, contents: Data) throws -> URL {
         let url = rootURL.appendingPathComponent(name)
         try contents.write(to: url)

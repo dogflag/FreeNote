@@ -669,6 +669,51 @@ final class FreeNoteStore: ObservableObject {
         return commitPreparedImports(outcomes)
     }
 
+    func importFiles(
+        _ urls: [URL],
+        destinations: Set<ImportDestination>,
+        notebookID: UUID? = nil,
+        pageID: UUID? = nil
+    ) async -> [ImportResult] {
+        guard !urls.isEmpty, !destinations.isEmpty else {
+            return []
+        }
+
+        var results: [ImportResult] = []
+        for destination in ImportDestination.allCases where destinations.contains(destination) {
+            switch destination {
+            case .bookshelf, .library:
+                let destinationResults = await importFiles(urls, destination: destination)
+                results.append(contentsOf: destinationResults)
+
+            case .currentPage:
+                guard let notebookID, let pageID else {
+                    let contextMessage = "导入到当前页时必须提供有效的笔记与页面标识。"
+                    results.append(contentsOf: urls.map { url in
+                        ImportResult(
+                            title: DocumentClassifier.displayTitle(for: url),
+                            kind: DocumentClassifier.kind(for: url),
+                            destination: .currentPage,
+                            success: false,
+                            errorMessage: contextMessage,
+                            itemID: nil,
+                            notebookID: notebookID,
+                            pageID: pageID
+                        )
+                    })
+                    continue
+                }
+                let destinationResults = await importFiles(
+                    urls,
+                    notebookID: notebookID,
+                    pageID: pageID
+                )
+                results.append(contentsOf: destinationResults)
+            }
+        }
+        return results
+    }
+
     // MARK: - Deletion and moving
 
     func deleteBooks(ids: Set<UUID>) throws {

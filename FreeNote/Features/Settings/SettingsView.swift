@@ -164,7 +164,7 @@ struct SettingsView: View {
         settingsCard(title: "关于 FreeNote", symbol: "info.circle") {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("FreeNote 0.2.0")
+                    Text("FreeNote 0.3.0")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(FNTheme.ink)
                     Text("本地优先的手写笔记与阅读工具")
@@ -254,4 +254,5 @@ extension ReadingFont {
         }
     }
 }
+
 

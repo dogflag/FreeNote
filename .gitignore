@@ -13,3 +13,6 @@ artifacts/
 device-*.png
 edge-*.png
 run-failed.log
+
+run-*.log
+

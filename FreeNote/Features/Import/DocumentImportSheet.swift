@@ -8,7 +8,7 @@ struct DocumentImportSheet: View {
     let notebookID: UUID?
     let pageID: UUID?
 
-    @State private var destination: ImportDestination
+    @State private var destinations: Set<ImportDestination>
     @State private var showingDocumentPicker = false
     @State private var pickedFiles: [PickedImportFile] = []
     @State private var isImporting = false
@@ -28,7 +28,7 @@ struct DocumentImportSheet: View {
         self.allowsCurrentPage = currentPageAvailable
         self.notebookID = notebookID
         self.pageID = pageID
-        _destination = State(initialValue: initialDestination)
+        _destinations = State(initialValue: [initialDestination])
     }
 
     var body: some View {
@@ -96,8 +96,9 @@ struct DocumentImportSheet: View {
             importTask?.cancel()
             importTask = nil
         }
-        .sheet(isPresented: $showingDocumentPicker) {
-            DocumentPickerView(
+        .background(
+            DocumentPickerPresenter(
+                isPresented: showingDocumentPicker,
                 onPick: { urls in
                     showingDocumentPicker = false
                     mergePickedFiles(urls)
@@ -106,8 +107,9 @@ struct DocumentImportSheet: View {
                     showingDocumentPicker = false
                 }
             )
-            .ignoresSafeArea()
-        }
+            .frame(width: 1, height: 1)
+            .allowsHitTesting(false)
+        )
         .alert(item: $activeAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -242,16 +244,22 @@ struct DocumentImportSheet: View {
         }
     }
 
+    private var importSummary: String {
+        guard !pickedFiles.isEmpty else { return "请先选择文件" }
+        return "将 \(pickedFiles.count) 个文件导入到 \(destinations.count) 个位置"
+    }
+
     private func destinationRow(_ value: ImportDestination, title: String, subtitle: String, symbol: String) -> some View {
-        Button {
-            destination = value
+        let isSelected = destinations.contains(value)
+        return Button {
+            toggleDestination(value)
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: symbol)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(destination == value ? FNTheme.selectionText : FNTheme.secondaryInk)
+                    .foregroundStyle(isSelected ? FNTheme.selectionText : FNTheme.secondaryInk)
                     .frame(width: 34, height: 34)
-                    .background(destination == value ? FNTheme.selectionFill : FNTheme.sidebar)
+                    .background(isSelected ? FNTheme.selectionFill : FNTheme.sidebar)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
@@ -262,20 +270,29 @@ struct DocumentImportSheet: View {
                         .foregroundStyle(FNTheme.tertiaryInk)
                 }
                 Spacer()
-                Image(systemName: destination == value ? "largecircle.fill.circle" : "circle")
+                Image(systemName: isSelected ? "checkmark.square.fill" : "square")
                     .font(.system(size: 16))
-                    .foregroundStyle(destination == value ? FNTheme.selectionFill : FNTheme.tertiaryInk)
+                    .foregroundStyle(isSelected ? FNTheme.selectionFill : FNTheme.tertiaryInk)
             }
             .padding(11)
-            .background(destination == value ? FNTheme.accentSoft.opacity(0.56) : FNTheme.card)
+            .background(isSelected ? FNTheme.accentSoft.opacity(0.56) : FNTheme.card)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(destination == value ? FNTheme.accent.opacity(0.4) : FNTheme.divider, lineWidth: 1)
+                    .stroke(isSelected ? FNTheme.accent.opacity(0.4) : FNTheme.divider, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
         .disabled(isImporting)
+    }
+
+    private func toggleDestination(_ value: ImportDestination) {
+        if destinations.contains(value) {
+            guard destinations.count > 1 else { return }
+            destinations.remove(value)
+        } else {
+            destinations.insert(value)
+        }
     }
 
     private var importFooter: some View {
@@ -287,7 +304,7 @@ struct DocumentImportSheet: View {
                     .font(.system(size: 10))
                     .foregroundStyle(FNTheme.secondaryInk)
             } else {
-                Text(pickedFiles.isEmpty ? "请先选择文件" : "将导入 \(pickedFiles.count) 个文件")
+                Text(importSummary)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(FNTheme.tertiaryInk)
             }
@@ -322,56 +339,42 @@ struct DocumentImportSheet: View {
     }
 
     private func startImport() {
-        guard !isImporting, !pickedFiles.isEmpty else { return }
+        guard !isImporting, !pickedFiles.isEmpty, !destinations.isEmpty else { return }
         isImporting = true
         let urls = pickedFiles.map(\.url)
+        let requestedDestinations = destinations
         importTask = Task {
-            let results: [ImportResult]
-            if destination == .currentPage, let notebookID, let pageID {
-                results = await store.importFiles(urls, notebookID: notebookID, pageID: pageID)
-            } else if destination == .currentPage {
-                importTask = nil
-                isImporting = false
-                activeAlert = ImportAlert(
-                    title: "导入失败",
-                    message: "当前页面信息已失效，请重新打开笔记后再导入。",
-                    dismissSheet: false
-                )
-                return
-            } else {
-                results = await store.importFiles(urls, destination: destination)
-            }
+            let results = await store.importFiles(
+                urls,
+                destinations: requestedDestinations,
+                notebookID: notebookID,
+                pageID: pageID
+            )
 
             guard !Task.isCancelled else { return }
             importTask = nil
             isImporting = false
+            pickedFiles.removeAll()
 
             let succeeded = results.filter(\.success).count
-            let failedIndices = results.indices.filter { !results[$0].success }
-            let failed = failedIndices.compactMap { index in
-                results.indices.contains(index) ? results[index] : nil
-            }
+            let failed = results.filter { !$0.success }
             let warnings = results.compactMap(\.warningMessage)
             let warningText = warnings.isEmpty ? "" : "\n\n目录识别提示：\n" + warnings.prefix(5).joined(separator: "\n")
 
-            if failedIndices.isEmpty {
-                pickedFiles.removeAll()
+            if failed.isEmpty {
                 activeAlert = ImportAlert(
                     title: "导入完成",
-                    message: "已成功导入 \(succeeded) 个文件。\(warningText)",
+                    message: "总计成功导入 \(succeeded) 项。\(warningText)",
                     dismissSheet: true
                 )
             } else {
-                pickedFiles = failedIndices.compactMap { index in
-                    pickedFiles.indices.contains(index) ? pickedFiles[index] : nil
-                }
                 let details = failed.prefix(3).map { item in
                     "\(item.title)：\(item.errorMessage ?? "未知错误")"
                 }.joined(separator: "\n")
                 activeAlert = ImportAlert(
-                    title: "部分文件导入失败",
-                    message: "成功 \(succeeded) 个，失败 \(failed.count) 个。\n\(details)\(warningText)",
-                    dismissSheet: false
+                    title: "部分项目导入失败",
+                    message: "总计成功 \(succeeded) 项，失败 \(failed.count) 项。\n\(details)\(warningText)\n\n已选文件列表已清空，可关闭后重新选择。",
+                    dismissSheet: true
                 )
             }
         }

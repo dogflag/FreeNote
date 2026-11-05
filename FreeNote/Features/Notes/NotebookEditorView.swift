@@ -64,6 +64,8 @@ struct NotebookEditorView: View {
             }
         }
         .background(FNTheme.appBackground)
+        .statusBar(hidden: isFullScreen)
+        .persistentSystemOverlays(isFullScreen ? .hidden : .automatic)
         .onAppear(perform: initializePagesIfNeeded)
         .onChange(of: notebook?.pages.map(\.id) ?? []) { _ in
             ensurePageSelection()
@@ -118,7 +120,16 @@ struct NotebookEditorView: View {
         }
     }
 
+    @ViewBuilder
     private func content(_ notebook: Notebook) -> some View {
+        if isFullScreen {
+            fullScreenContent(notebook)
+        } else {
+            standardContent(notebook)
+        }
+    }
+
+    private func standardContent(_ notebook: Notebook) -> some View {
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 0) {
                 editorHeader(notebook)
@@ -174,6 +185,158 @@ struct NotebookEditorView: View {
             .padding(.top, 6)
             .background(FNTheme.appBackground.opacity(0.92))
         }
+    }
+
+    private func fullScreenContent(_ notebook: Notebook) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            fullScreenCanvasArea(notebook)
+                .ignoresSafeArea()
+
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        guard flushPendingDrawing() else { return }
+                        dismissView()
+                    } label: {
+                        Label("退出全屏", systemImage: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FNTheme.ink)
+                            .padding(.horizontal, 14)
+                            .frame(height: 38)
+                            .background(FNTheme.cardRaised.opacity(0.96))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(FNTheme.divider, lineWidth: 1))
+                            .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                if notebook.kind == .paged {
+                    fullScreenPageControls(notebook)
+                }
+
+                drawingToolbar
+                    .clipShape(Capsule())
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 16)
+
+            OutlineHandle {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showingOutline = true
+                }
+            }
+            .padding(.trailing, 18)
+            .padding(.bottom, 142)
+
+            if showingOutline {
+                OutlineDrawerOverlay(
+                    isPresented: $showingOutline,
+                    documentTitle: notebook.title,
+                    pageCount: max(notebook.pages.count, 1),
+                    initialNodes: notebook.outline,
+                    initialPage: currentPageIndex,
+                    onSave: { try store.updateOutline($0, forNotebookID: notebook.id) },
+                    onJumpToPage: { selectPageNumber($0) }
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: showingOutline)
+    }
+
+    @ViewBuilder
+    private func fullScreenCanvasArea(_ notebook: Notebook) -> some View {
+        if notebook.kind == .infiniteCanvas {
+            ZStack(alignment: .topLeading) {
+                if let pageID = selectedPageID {
+                    InfinitePencilCanvasView(
+                        drawingData: drawingData,
+                        tool: tool,
+                        color: inkColor,
+                        lineWidth: lineWidth,
+                        paperStyle: notebook.paperStyle,
+                        paperTone: store.settings.paperTone,
+                        controller: canvasController,
+                        onDrawingChanged: { data in
+                            handleDrawingChanged(data, pageID: pageID)
+                        }
+                    )
+                    .id(pageID)
+                    .allowsHitTesting(!drawingReadOnly)
+                }
+
+                infiniteCanvasControls
+                    .padding(14)
+
+                if drawingReadOnly, let pageID = selectedPageID {
+                    FNRecoveryReadOnlyView(
+                        title: "无法读取此页笔迹",
+                        message: drawingLoadError ?? "为避免覆盖原始笔迹，当前页面已切换为只读状态。",
+                        issues: store.recoveryIssues,
+                        onRetry: { loadDrawing(pageID: pageID) }
+                    )
+                }
+            }
+            .background(FNTheme.appBackground)
+        } else {
+            GeometryReader { proxy in
+                let availableWidth = max(proxy.size.width - 16, 280)
+                let availableHeight = max(proxy.size.height - 16, 420)
+                let pageWidth = min(availableWidth, availableHeight * 0.707, 940)
+                let pageHeight = pageWidth / 0.707
+                ScrollView(.vertical, showsIndicators: false) {
+                    ZStack {
+                        FNPaperBackgroundView(style: notebook.paperStyle, tone: store.settings.paperTone)
+                        pagedPencilCanvas(notebook)
+                    }
+                    .frame(width: pageWidth, height: pageHeight)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .background(FNTheme.appBackground)
+            }
+        }
+    }
+
+    private func fullScreenPageControls(_ notebook: Notebook) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                selectPageNumber(currentPageIndex - 1)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .frame(width: 30, height: 28)
+            }
+            .disabled(currentPageIndex <= 1)
+
+            Text("第 \(currentPageIndex) / \(max(notebook.pages.count, 1)) 页")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(FNTheme.secondaryInk)
+                .frame(minWidth: 86)
+
+            Button {
+                selectPageNumber(currentPageIndex + 1)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .frame(width: 30, height: 28)
+            }
+            .disabled(currentPageIndex >= notebook.pages.count)
+        }
+        .foregroundStyle(FNTheme.secondaryInk)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .frame(height: 38)
+        .background(FNTheme.cardRaised.opacity(0.96))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(FNTheme.divider, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.10), radius: 10, y: 4)
     }
 
     private func editorHeader(_ notebook: Notebook) -> some View {
@@ -506,14 +669,28 @@ struct NotebookEditorView: View {
                 Button {
                     tool = item
                 } label: {
-                    Image(systemName: item.symbol)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(tool == item ? FNTheme.selectionText : FNTheme.secondaryInk)
-                        .frame(width: 36, height: 36)
-                        .background(tool == item ? FNTheme.selectionFill : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(spacing: 1) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 15, weight: .medium))
+                        if item == .eraser {
+                            Text("压感橡皮")
+                                .font(.system(size: 7, weight: .medium))
+                                .lineLimit(1)
+                        }
+                    }
+                    .foregroundStyle(tool == item ? FNTheme.selectionText : FNTheme.secondaryInk)
+                    .frame(width: item == .eraser ? 52 : 36, height: 36)
+                    .background(tool == item ? FNTheme.selectionFill : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(item.title)
+                .simultaneousGesture(
+                    TapGesture(count: 2).onEnded {
+                        guard item == .eraser, !drawingReadOnly else { return }
+                        canvasController.clearWithUndo()
+                    }
+                )
             }
 
             divider
@@ -546,7 +723,7 @@ struct NotebookEditorView: View {
                 Circle()
                     .fill(Color(uiColor: inkColor))
                     .frame(width: 18, height: 18)
-                    .overlay(Circle().stroke(Color.white.opacity(0.8), lineWidth: 1))
+                    .overlay(Circle().stroke(FNTheme.secondaryInk.opacity(0.9), lineWidth: 1))
                     .frame(width: 34, height: 34)
                     .background(FNTheme.sidebar)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
@@ -608,27 +785,48 @@ struct NotebookEditorView: View {
     }
 
     private var palettePopover: some View {
-        HStack(spacing: 10) {
-            ForEach(inkPalette.indices, id: \.self) { index in
-                let color = inkPalette[index]
-                Button {
-                    inkColor = color
-                    showingPalette = false
-                } label: {
-                    Circle()
-                        .fill(Color(uiColor: color))
-                        .frame(width: 25, height: 25)
-                        .overlay(
-                            Circle().stroke(
-                                color == inkColor ? FNTheme.accent : Color.white.opacity(0.8),
-                                lineWidth: color == inkColor ? 2 : 1
+        VStack(alignment: .leading, spacing: 12) {
+            Text("笔迹颜色")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(FNTheme.secondaryInk)
+
+            HStack(spacing: 10) {
+                ForEach(inkPalette.indices, id: \.self) { index in
+                    let color = inkPalette[index]
+                    Button {
+                        inkColor = color
+                        showingPalette = false
+                    } label: {
+                        Circle()
+                            .fill(Color(uiColor: color))
+                            .frame(width: 25, height: 25)
+                            .overlay(
+                                Circle().stroke(
+                                    color == inkColor ? FNTheme.accent : FNTheme.divider,
+                                    lineWidth: color == inkColor ? 2 : 1
+                                )
                             )
-                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(index == 0 ? "纯黑" : "颜色选项")
                 }
-                .buttonStyle(.plain)
             }
+
+            Divider().overlay(FNTheme.divider)
+
+            ColorPicker("自定义颜色", selection: customInkColorBinding, supportsOpacity: false)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(FNTheme.ink)
         }
         .padding(14)
+        .background(FNTheme.cardRaised)
+    }
+
+    private var customInkColorBinding: Binding<Color> {
+        Binding(
+            get: { Color(uiColor: inkColor) },
+            set: { inkColor = UIColor($0) }
+        )
     }
 
     private var widthPopover: some View {
@@ -642,12 +840,25 @@ struct NotebookEditorView: View {
             Text("\(Int(lineWidth)) pt")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(FNTheme.tertiaryInk)
+            if tool == .eraser {
+                Text("压感橡皮：Pencil 力度越大，擦除半径越大。")
+                    .font(.system(size: 8))
+                    .foregroundStyle(FNTheme.tertiaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 180, alignment: .leading)
+                Text("双击工具栏中的“压感橡皮”可清空当前画布，支持撤销。")
+                    .font(.system(size: 8))
+                    .foregroundStyle(FNTheme.tertiaryInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(width: 180, alignment: .leading)
+            }
         }
         .padding(16)
     }
 
     private var inkPalette: [UIColor] {
         [
+            UIColor(hex: 0x000000),
             UIColor(hex: 0x26322F),
             UIColor(hex: 0x4F6759),
             UIColor(hex: 0x486A88),

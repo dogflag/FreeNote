@@ -35,45 +35,167 @@ enum FNImportFileTypes {
     }()
 }
 
-struct DocumentPickerView: UIViewControllerRepresentable {
+struct DocumentPickerPresenter: UIViewControllerRepresentable {
+    let isPresented: Bool
     let onPick: ([URL]) -> Void
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onPick: onPick, onCancel: onCancel)
+        Coordinator()
     }
 
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(
-            forOpeningContentTypes: FNImportFileTypes.allowed,
-            asCopy: false
-        )
-        picker.delegate = context.coordinator
-        picker.allowsMultipleSelection = true
-        picker.modalPresentationStyle = .formSheet
-        return picker
+    func makeUIViewController(context: Context) -> UIViewController {
+        let host = UIViewController()
+        host.view.backgroundColor = .clear
+        host.view.isUserInteractionEnabled = false
+        context.coordinator.host = host
+        return host
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {
-        context.coordinator.onPick = onPick
-        context.coordinator.onCancel = onCancel
+    func updateUIViewController(_ host: UIViewController, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.updatePresentation()
     }
 
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        var onPick: ([URL]) -> Void
-        var onCancel: () -> Void
+    final class Coordinator: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+        var parent: DocumentPickerPresenter?
+        weak var host: UIViewController?
+        weak var picker: UIDocumentPickerViewController?
+        private var requestedState = false
+        private var isPresenting = false
+        private var isScheduling = false
+        private var attemptCount = 0
+        private let maximumAttempts = 20
 
-        init(onPick: @escaping ([URL]) -> Void, onCancel: @escaping () -> Void) {
-            self.onPick = onPick
-            self.onCancel = onCancel
+        func updatePresentation() {
+            let wanted = parent?.isPresented == true
+            if wanted {
+                if !requestedState {
+                    requestedState = true
+                    attemptCount = 0
+                }
+                requestPresentation()
+            } else {
+                requestedState = false
+                attemptCount = 0
+                if isPresenting {
+                    dismissPicker()
+                }
+            }
+        }
+
+        private func requestPresentation() {
+            guard requestedState, !isPresenting, !isScheduling else { return }
+            isScheduling = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isScheduling = false
+                guard self.requestedState else { return }
+                self.attemptPresentation()
+            }
+        }
+
+        private func attemptPresentation() {
+            guard requestedState, !isPresenting else { return }
+            attemptCount += 1
+
+            guard let host, host.view.window != nil else {
+                scheduleRetryOrFail()
+                return
+            }
+            guard host.presentedViewController == nil else {
+                scheduleRetryOrFail()
+                return
+            }
+
+            let controller = UIDocumentPickerViewController(
+                forOpeningContentTypes: FNImportFileTypes.allowed,
+                asCopy: true
+            )
+            controller.delegate = self
+            controller.allowsMultipleSelection = true
+            controller.modalPresentationStyle = .formSheet
+            controller.presentationController?.delegate = self
+            picker = controller
+            isPresenting = true
+
+            host.present(controller, animated: true) { [weak self, weak host, weak controller] in
+                guard let self else { return }
+                guard self.requestedState else {
+                    self.isPresenting = false
+                    self.picker = nil
+                    if let controller, controller.presentingViewController != nil {
+                        controller.dismiss(animated: false)
+                    }
+                    return
+                }
+                if host?.presentedViewController === controller {
+                    controller.presentationController?.delegate = self
+                    self.attemptCount = 0
+                } else {
+                    self.isPresenting = false
+                    self.picker = nil
+                    self.scheduleRetryOrFail()
+                }
+            }
+        }
+
+        private func scheduleRetryOrFail() {
+            guard requestedState else { return }
+            guard attemptCount < maximumAttempts else {
+                failPresentation()
+                return
+            }
+            isScheduling = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                guard let self else { return }
+                self.isScheduling = false
+                self.requestPresentation()
+            }
+        }
+
+        private func failPresentation() {
+            guard requestedState else { return }
+            requestedState = false
+            isPresenting = false
+            isScheduling = false
+            picker = nil
+            parent?.onCancel()
+        }
+
+        private func dismissPicker() {
+            requestedState = false
+            isPresenting = false
+            picker?.dismiss(animated: true) { [weak self] in
+                self?.picker = nil
+            }
         }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            onPick(urls)
+            let completion = parent?.onPick
+            requestedState = false
+            isPresenting = false
+            controller.dismiss(animated: true)
+            picker = nil
+            completion?(urls)
         }
 
         func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-            onCancel()
+            let completion = parent?.onCancel
+            requestedState = false
+            isPresenting = false
+            controller.dismiss(animated: true)
+            picker = nil
+            completion?()
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            guard isPresenting || requestedState else { return }
+            requestedState = false
+            isPresenting = false
+            picker = nil
+            parent?.onCancel()
         }
     }
 }
+

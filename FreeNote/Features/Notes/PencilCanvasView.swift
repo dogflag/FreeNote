@@ -14,7 +14,7 @@ enum DrawingTool: String, CaseIterable, Identifiable {
         switch self {
         case .pen: return "钢笔"
         case .highlighter: return "荧光笔"
-        case .eraser: return "橡皮"
+        case .eraser: return "压感橡皮"
         case .lasso: return "套索"
         }
     }
@@ -34,25 +34,55 @@ final class PencilCanvasController: ObservableObject {
     weak var navigationScrollView: UIScrollView?
     @Published private(set) var zoomScale: CGFloat = 1.0
 
+    private var activeUndoManager: UndoManager? {
+        canvasView?.undoManager ?? canvasView?.window?.undoManager
+    }
+
     func undo() {
-        canvasView?.undoManager?.undo()
+        activeUndoManager?.undo()
     }
 
     func redo() {
-        canvasView?.undoManager?.redo()
+        activeUndoManager?.redo()
     }
 
     var canUndo: Bool {
-        canvasView?.undoManager?.canUndo ?? false
+        activeUndoManager?.canUndo ?? false
     }
 
     var canRedo: Bool {
-        canvasView?.undoManager?.canRedo ?? false
+        activeUndoManager?.canRedo ?? false
     }
 
     func clear() {
-        guard let canvasView else { return }
+        clearWithUndo()
+    }
+
+    func clearWithUndo() {
+        guard let canvasView, !canvasView.drawing.strokes.isEmpty else { return }
+        let previousDrawing = canvasView.drawing
+        let undoManager = canvasView.undoManager ?? canvasView.window?.undoManager
+        undoManager?.beginUndoGrouping()
+        undoManager?.registerUndo(withTarget: self) { target in
+            target.restoreDrawing(previousDrawing, on: canvasView)
+        }
+        undoManager?.setActionName("清空画布")
+        undoManager?.disableUndoRegistration()
         canvasView.drawing = PKDrawing()
+        undoManager?.enableUndoRegistration()
+        undoManager?.endUndoGrouping()
+        canvasView.delegate?.canvasViewDrawingDidChange?(canvasView)
+    }
+
+    private func restoreDrawing(_ drawing: PKDrawing, on canvasView: PKCanvasView) {
+        let previousDrawing = canvasView.drawing
+        canvasView.undoManager?.registerUndo(withTarget: self) { target in
+            target.restoreDrawing(previousDrawing, on: canvasView)
+        }
+        canvasView.undoManager?.setActionName("清空画布")
+        canvasView.undoManager?.disableUndoRegistration()
+        canvasView.drawing = drawing
+        canvasView.undoManager?.enableUndoRegistration()
         canvasView.delegate?.canvasViewDrawingDidChange?(canvasView)
     }
 
@@ -91,6 +121,32 @@ final class PencilCanvasController: ObservableObject {
     }
 }
 
+final class PencilCanvasHostView: UIView {
+    let canvasView = PKCanvasView()
+    let eraserOverlay = PressureEraserCanvasOverlay(frame: .zero)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        canvasView.frame = bounds
+        canvasView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        eraserOverlay.frame = bounds
+        eraserOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        eraserOverlay.canvasView = canvasView
+        addSubview(canvasView)
+        addSubview(eraserOverlay)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setEraserMode(_ enabled: Bool, width: CGFloat) {
+        eraserOverlay.setEraserMode(enabled, width: width)
+    }
+}
+
 struct PencilCanvasView: UIViewRepresentable {
     let drawingData: Data
     let tool: DrawingTool
@@ -104,8 +160,9 @@ struct PencilCanvasView: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
-    func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
+    func makeUIView(context: Context) -> PencilCanvasHostView {
+        let hostView = PencilCanvasHostView()
+        let canvas = hostView.canvasView
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.isScrollEnabled = false
@@ -113,17 +170,20 @@ struct PencilCanvasView: UIViewRepresentable {
         canvas.drawing = (try? PKDrawing(data: drawingData)) ?? PKDrawing()
         canvas.tool = makeTool()
         canvas.delegate = context.coordinator
+        hostView.setEraserMode(tool == .eraser, width: lineWidth)
         controller.canvasView = canvas
         controller.navigationScrollView = nil
         context.coordinator.lastAppliedData = drawingData
-        return canvas
+        return hostView
     }
 
-    func updateUIView(_ canvas: PKCanvasView, context: Context) {
+    func updateUIView(_ hostView: PencilCanvasHostView, context: Context) {
         context.coordinator.parent = self
+        let canvas = hostView.canvasView
         controller.canvasView = canvas
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
         canvas.tool = makeTool()
+        hostView.setEraserMode(tool == .eraser, width: lineWidth)
 
         guard context.coordinator.lastAppliedData != drawingData else { return }
         let current = canvas.drawing.dataRepresentation()
@@ -159,7 +219,6 @@ struct PencilCanvasView: UIViewRepresentable {
         }
     }
 }
-
 
 
 extension DrawingTool {
