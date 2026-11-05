@@ -106,9 +106,13 @@ struct PencilCanvasView: UIViewRepresentable {
         case .pen:
             return PKInkingTool(.pen, color: color, width: lineWidth)
         case .highlighter:
-            return PKInkingTool(.highlighter, color: color.withAlphaComponent(0.45), width: max(lineWidth * 3, 12))
+            return PKInkingTool(.marker, color: color.withAlphaComponent(0.42), width: max(lineWidth * 3, 12))
         case .eraser:
-            return PKEraserTool(.bitmap, width: max(lineWidth * 3, 14))
+            if #available(iOS 16.4, *) {
+                return PKEraserTool(.bitmap, width: max(lineWidth * 3, 14))
+            } else {
+                return PKEraserTool(.bitmap)
+            }
         case .lasso:
             return PKLassoTool()
         }
@@ -131,3 +135,4 @@ struct PencilCanvasView: UIViewRepresentable {
         }
     }
 }
+
