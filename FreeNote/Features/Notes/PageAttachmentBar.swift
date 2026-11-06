@@ -74,7 +74,7 @@ private struct AttachmentDisplayItem: Identifiable {
 
     var canInsertPages: Bool {
         guard attachment.pageIndex == nil, let resource else { return false }
-        return ["pdf", "pptx", "epub"].contains(resource.fileName.pathExtension.lowercased())
+        return ["pdf", "pptx", "epub"].contains((resource.fileName as NSString).pathExtension.lowercased())
     }
 }
 
@@ -195,3 +195,4 @@ private struct AttachmentImageThumbnail: View {
         }
     }
 }
+
