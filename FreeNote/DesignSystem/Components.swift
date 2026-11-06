@@ -261,7 +261,7 @@ struct FNPaperBackgroundView: View {
                         path.addLine(to: CGPoint(x: size.width - 28, y: y))
                         y += gap
                     }
-                    context.stroke(path, with: .color(FNTheme.divider.opacity(0.58)), lineWidth: 0.7)
+                    context.stroke(path, with: .color(FNTheme.paperLine.opacity(0.72)), lineWidth: 0.7)
                 case .grid:
                     let gap: CGFloat = 26
                     var path = Path()
@@ -277,7 +277,7 @@ struct FNPaperBackgroundView: View {
                         path.addLine(to: CGPoint(x: size.width, y: y))
                         y += gap
                     }
-                    context.stroke(path, with: .color(FNTheme.divider.opacity(0.46)), lineWidth: 0.65)
+                    context.stroke(path, with: .color(FNTheme.paperLine.opacity(0.62)), lineWidth: 0.65)
                 case .dotted:
                     let gap: CGFloat = 24
                     var path = Path()
@@ -290,7 +290,7 @@ struct FNPaperBackgroundView: View {
                         }
                         y += gap
                     }
-                    context.fill(path, with: .color(FNTheme.tertiaryInk.opacity(0.38)))
+                    context.fill(path, with: .color(FNTheme.paperLine.opacity(0.72)))
                 }
             }
             .background(FNTheme.paperColor(tone: tone))
@@ -417,6 +417,78 @@ struct OutlineHandle: View {
         .accessibilityLabel("打开大纲")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { onOpen() }
+    }
+}
+
+struct WindowTwoFingerDoubleTapInstaller: UIViewRepresentable {
+    let onDoubleTap: () -> Void
+
+    func makeUIView(context: Context) -> InstallerView {
+        InstallerView(onDoubleTap: onDoubleTap)
+    }
+
+    func updateUIView(_ view: InstallerView, context: Context) {
+        view.onDoubleTap = onDoubleTap
+    }
+
+    final class InstallerView: UIView, UIGestureRecognizerDelegate {
+        var onDoubleTap: () -> Void
+        private weak var installedWindow: UIWindow?
+        private var recognizer: UITapGestureRecognizer?
+
+        init(onDoubleTap: @escaping () -> Void) {
+            self.onDoubleTap = onDoubleTap
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isUserInteractionEnabled = false
+        }
+
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard installedWindow !== window else { return }
+            removeRecognizer()
+            guard let window else { return }
+
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
+            tap.numberOfTouchesRequired = 2
+            tap.numberOfTapsRequired = 2
+            tap.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            window.addGestureRecognizer(tap)
+            installedWindow = window
+            recognizer = tap
+        }
+
+        @objc private func handleDoubleTap() {
+            onDoubleTap()
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            touch.type == .direct
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        private func removeRecognizer() {
+            if let recognizer {
+                installedWindow?.removeGestureRecognizer(recognizer)
+            }
+            recognizer = nil
+            installedWindow = nil
+        }
+
+        deinit {
+            if let recognizer {
+                installedWindow?.removeGestureRecognizer(recognizer)
+            }
+        }
     }
 }
 

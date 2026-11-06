@@ -1,0 +1,10 @@
+问题
+	1.触控笔不跟手，响应速度不及时。
+	2.深色模式下黑色与白色的显示有误"C:\Users\zxlzc\Desktop\FreeNote\draft\第三版\0f0ca80bb2b57195d54e10a93203ec6b.jpg"
+	3.全屏后页面过于杂乱，建议隐藏“退出全屏”改用手势，工具栏位置可调，功能尽量放在一起，避免杂乱。
+	4.页面附件插在页面上，如果是pdf，电子书，ppt之类，支持拆散页面并添加到此页面之后。"C:\Users\zxlzc\Desktop\FreeNote\draft\第三版\dd176237dfbad3c83da5d8696dddeea0.jpg"
+	5.导入的附件怎么是这样的，希望可以在本应用内运行，你装一个office插件吧。"C:\Users\zxlzc\Desktop\FreeNote\draft\第三版\e6881eb695edad25f184644403c9a155.jpg"
+	6.压感橡皮指的是在用笔时长按切换为橡皮，松开后又切回笔。
+
+按照之前的三子AGENT流程构筑第三版。
+一定确保附件可用

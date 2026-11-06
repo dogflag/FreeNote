@@ -16,3 +16,6 @@ run-failed.log
 
 run-*.log
 
+
+run-*.json
+

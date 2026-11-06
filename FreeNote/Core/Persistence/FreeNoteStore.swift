@@ -446,6 +446,243 @@ final class FreeNoteStore: ObservableObject {
         )
     }
 
+    @available(*, deprecated, message: "Use the async attachmentPageCount(resourceID:) overload.")
+    func attachmentPageCount(resourceID: UUID) throws -> Int {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let url = storedURL(for: resource) else {
+            throw FreeNoteError.fileOperationFailed("附件资源文件不存在。")
+        }
+        let count = try OfficePreviewRenderer.pageCount(for: url, kind: resource.kind)
+        guard count >= 1 else {
+            throw FreeNoteError.documentHasNoReadablePages(resource.fileName)
+        }
+        return count
+    }
+
+    @available(*, deprecated, message: "Use the async insertAttachmentPages(resourceID:notebookID:afterPageID:) overload.")
+    func insertAttachmentPages(
+        resourceID: UUID,
+        notebookID: UUID,
+        afterPageID: UUID
+    ) throws -> [NotePage] {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let notebookIndex = notebooks.firstIndex(where: { $0.id == notebookID }) else {
+            throw FreeNoteError.notebookNotFound(notebookID)
+        }
+        let notebook = notebooks[notebookIndex]
+        guard let anchorIndex = notebook.pages.firstIndex(where: { $0.id == afterPageID }) else {
+            throw FreeNoteError.pageNotFound(afterPageID)
+        }
+
+        let pageCount = try attachmentPageCount(resourceID: resourceID)
+        try OutlineEditor.validate(notebook.outline, pageCount: notebook.pages.count)
+
+        let insertedPages = (0..<pageCount).map { pageIndex in
+            NotePage(
+                index: 0,
+                attachments: [
+                    AttachmentRef(resourceID: resource.id, pageIndex: pageIndex)
+                ]
+            )
+        }
+        let insertionIndex = anchorIndex + 1
+        let oldPageIDs = notebook.pages.map(\.id)
+        var updatedNotebook = notebook
+        updatedNotebook.pages.insert(contentsOf: insertedPages, at: insertionIndex)
+        for index in updatedNotebook.pages.indices {
+            updatedNotebook.pages[index].index = index + 1
+        }
+        let newPageIDs = updatedNotebook.pages.map(\.id)
+        updatedNotebook.outline = try OutlineEditor.remapPageRanges(
+            notebook.outline,
+            oldPageIDs: oldPageIDs,
+            newPageIDs: newPageIDs
+        )
+        updatedNotebook.updatedAt = Date()
+
+        let createdPages = Array(
+            updatedNotebook.pages[insertionIndex..<(insertionIndex + insertedPages.count)]
+        )
+        do {
+            for page in createdPages {
+                try writeDrawing(Data(), notebookID: notebookID, pageID: page.id)
+            }
+            var updatedNotebooks = notebooks
+            updatedNotebooks[notebookIndex] = updatedNotebook
+            try commit(
+                notebooks: updatedNotebooks,
+                books: books,
+                resources: resources,
+                settings: settings
+            )
+            return createdPages
+        } catch {
+            for page in createdPages {
+                try? fileManager.removeItem(
+                    at: drawingURL(notebookID: notebookID, pageID: page.id)
+                )
+            }
+            throw error
+        }
+    }
+
+    @available(*, deprecated, message: "Use the async resourcePreviewHTML(resourceID:) overload.")
+    func resourcePreviewHTML(resourceID: UUID) throws -> String? {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let url = storedURL(for: resource) else {
+            throw FreeNoteError.fileOperationFailed("资源预览文件不存在。")
+        }
+        return try OfficePreviewRenderer.previewHTML(for: url, kind: resource.kind)
+    }
+
+    func attachmentPageCount(resourceID: UUID) async throws -> Int {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let url = storedURL(for: resource) else {
+            throw FreeNoteError.fileOperationFailed("附件资源文件不存在。")
+        }
+        let kind = resource.kind
+        return try await Task.detached(priority: .userInitiated) {
+            try OfficePreviewRenderer.pageCount(for: url, kind: kind)
+        }.value
+    }
+
+    func insertAttachmentPages(
+        resourceID: UUID,
+        notebookID: UUID,
+        afterPageID: UUID
+    ) async throws -> [NotePage] {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let resourceURL = storedURL(for: resource) else {
+            throw FreeNoteError.fileOperationFailed("附件资源文件不存在。")
+        }
+        guard notebooks.contains(where: { $0.id == notebookID }) else {
+            throw FreeNoteError.notebookNotFound(notebookID)
+        }
+        guard notebooks
+            .first(where: { $0.id == notebookID })?
+            .pages.contains(where: { $0.id == afterPageID }) == true else {
+            throw FreeNoteError.pageNotFound(afterPageID)
+        }
+
+        let kind = resource.kind
+        let insertionStagingRoot = stagingDirectory
+            .appendingPathComponent("PageInsertions", isDirectory: true)
+        let plan = try await Task.detached(priority: .userInitiated) {
+            try PageInsertionPreparation.prepare(
+                resourceURL: resourceURL,
+                kind: kind,
+                stagingRoot: insertionStagingRoot
+            )
+        }.value
+
+        var movedDrawingURLs: [URL] = []
+        do {
+            guard let currentResource = resources.first(where: { $0.id == resourceID }),
+                  currentResource.kind == kind,
+                  currentResource.fileName == resource.fileName else {
+                throw FreeNoteError.resourceNotFound(resourceID)
+            }
+            guard let notebookIndex = notebooks.firstIndex(where: { $0.id == notebookID }) else {
+                throw FreeNoteError.notebookNotFound(notebookID)
+            }
+            let notebook = notebooks[notebookIndex]
+            guard let anchorIndex = notebook.pages.firstIndex(where: { $0.id == afterPageID }) else {
+                throw FreeNoteError.pageNotFound(afterPageID)
+            }
+            guard plan.pageIDs.count == plan.stagedDrawingURLs.count,
+                  !plan.pageIDs.isEmpty else {
+                throw FreeNoteError.invalidState("附件拆页暂存结果无效。")
+            }
+
+            try OutlineEditor.validate(notebook.outline, pageCount: notebook.pages.count)
+            let insertedPages = plan.pageIDs.enumerated().map { pageIndex, pageID in
+                NotePage(
+                    id: pageID,
+                    index: 0,
+                    attachments: [
+                        AttachmentRef(resourceID: resourceID, pageIndex: pageIndex)
+                    ]
+                )
+            }
+            let insertionIndex = anchorIndex + 1
+            let oldPageIDs = notebook.pages.map(\.id)
+            var updatedNotebook = notebook
+            updatedNotebook.pages.insert(contentsOf: insertedPages, at: insertionIndex)
+            for index in updatedNotebook.pages.indices {
+                updatedNotebook.pages[index].index = index + 1
+            }
+            let newPageIDs = updatedNotebook.pages.map(\.id)
+            updatedNotebook.outline = try OutlineEditor.remapPageRanges(
+                notebook.outline,
+                oldPageIDs: oldPageIDs,
+                newPageIDs: newPageIDs
+            )
+            updatedNotebook.updatedAt = Date()
+
+            let createdPages = Array(
+                updatedNotebook.pages[insertionIndex..<(insertionIndex + insertedPages.count)]
+            )
+            try ensureNotebookDirectories(for: notebookID)
+            movedDrawingURLs.reserveCapacity(createdPages.count)
+            for (index, page) in createdPages.enumerated() {
+                let destinationURL = drawingURL(notebookID: notebookID, pageID: page.id)
+                try fileManager.moveItem(
+                    at: plan.stagedDrawingURLs[index],
+                    to: destinationURL
+                )
+                movedDrawingURLs.append(destinationURL)
+            }
+
+            var updatedNotebooks = notebooks
+            updatedNotebooks[notebookIndex] = updatedNotebook
+            try commit(
+                notebooks: updatedNotebooks,
+                books: books,
+                resources: resources,
+                settings: settings
+            )
+            try? fileManager.removeItem(at: plan.stagingDirectory)
+            return createdPages
+        } catch {
+            for url in movedDrawingURLs {
+                try? fileManager.removeItem(at: url)
+            }
+            try? fileManager.removeItem(at: plan.stagingDirectory)
+            throw error
+        }
+    }
+
+    func resourcePreviewHTML(resourceID: UUID) async throws -> String? {
+        try await resourcePreviewHTML(resourceID: resourceID, pageIndex: nil)
+    }
+
+    func resourcePreviewHTML(resourceID: UUID, pageIndex: Int?) async throws -> String? {
+        guard let resource = resources.first(where: { $0.id == resourceID }) else {
+            throw FreeNoteError.resourceNotFound(resourceID)
+        }
+        guard let url = storedURL(for: resource) else {
+            throw FreeNoteError.fileOperationFailed("资源预览文件不存在。")
+        }
+        let kind = resource.kind
+        return try await Task.detached(priority: .userInitiated) {
+            try OfficePreviewRenderer.previewHTML(
+                for: url,
+                kind: kind,
+                pageIndex: pageIndex
+            )
+        }.value
+    }
+
     // MARK: - Settings
 
     func saveSettings() throws {

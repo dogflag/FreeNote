@@ -40,9 +40,11 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         let contentView = PaperTiledContentView(
             frame: CGRect(origin: .zero, size: Self.contentSize)
         )
-        let paperColor = UIColor(FNTheme.paperColor(tone: paperTone))
-        let lineColor = UIColor(FNTheme.divider)
-        contentView.configure(style: paperStyle, paperColor: paperColor, lineColor: lineColor)
+        contentView.configure(
+            style: paperStyle,
+            paperColor: UIColor(FNTheme.paperColor(tone: paperTone)),
+            lineColor: UIColor(FNTheme.paperLine)
+        )
 
         let canvas = PKCanvasView(frame: contentView.bounds)
         canvas.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -51,16 +53,11 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         canvas.isScrollEnabled = false
         canvas.drawingPolicy = .pencilOnly
         canvas.drawing = (try? PKDrawing(data: drawingData)) ?? PKDrawing()
-        canvas.tool = tool.makePencilKitTool(color: color, lineWidth: lineWidth)
+        let toolKey = makeToolKey()
+        let initialTool = makeTool()
+        canvas.tool = initialTool
         canvas.delegate = context.coordinator
         contentView.addSubview(canvas)
-
-        let eraserOverlay = PressureEraserCanvasOverlay(frame: contentView.bounds)
-        eraserOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        eraserOverlay.canvasView = canvas
-        eraserOverlay.setEraserMode(tool == .eraser, width: lineWidth)
-        contentView.addSubview(eraserOverlay)
-        context.coordinator.eraserOverlay = eraserOverlay
 
         scrollView.addSubview(contentView)
         scrollView.contentSize = Self.contentSize
@@ -68,13 +65,23 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         context.coordinator.contentView = contentView
         context.coordinator.canvasView = canvas
         context.coordinator.lastAppliedData = drawingData
-        context.coordinator.lastPaperKey = paperKey(style: paperStyle, tone: paperTone, traits: scrollView.traitCollection)
+        context.coordinator.lastToolKey = toolKey
+        context.coordinator.lastPaperKey = paperKey(
+            style: paperStyle,
+            tone: paperTone,
+            traits: scrollView.traitCollection
+        )
+        context.coordinator.temporaryEraser = PencilTemporaryEraserController(
+            canvasView: canvas,
+            normalTool: initialTool,
+            normalToolKey: toolKey
+        )
 
         controller.canvasView = canvas
         controller.navigationScrollView = scrollView
 
         DispatchQueue.main.async {
-            scrollView.setZoomScale(0.62, animated: false)
+            scrollView.setZoomScale(1.0, animated: false)
             controller.recenter(animated: false)
             controller.updateZoomScale(scrollView.zoomScale)
         }
@@ -86,7 +93,6 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         guard let canvas = context.coordinator.canvasView,
               let contentView = context.coordinator.contentView else { return }
 
-        context.coordinator.eraserOverlay?.setEraserMode(tool == .eraser, width: lineWidth)
         controller.canvasView = canvas
         controller.navigationScrollView = scrollView
         scrollView.panGestureRecognizer.allowedTouchTypes = [
@@ -96,18 +102,30 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
             NSNumber(value: UITouch.TouchType.direct.rawValue)
         ]
         canvas.drawingPolicy = .pencilOnly
-        canvas.tool = tool.makePencilKitTool(color: color, lineWidth: lineWidth)
 
-        let key = paperKey(style: paperStyle, tone: paperTone, traits: scrollView.traitCollection)
+        let toolKey = makeToolKey()
+        if context.coordinator.lastToolKey != toolKey {
+            let updatedTool = makeTool()
+            context.coordinator.lastToolKey = toolKey
+            canvas.tool = updatedTool
+            context.coordinator.temporaryEraser?.updateNormalTool(updatedTool, key: toolKey)
+        }
+
+        let key = paperKey(
+            style: paperStyle,
+            tone: paperTone,
+            traits: scrollView.traitCollection
+        )
         if context.coordinator.lastPaperKey != key {
             contentView.configure(
                 style: paperStyle,
                 paperColor: UIColor(FNTheme.paperColor(tone: paperTone)),
-                lineColor: UIColor(FNTheme.divider)
+                lineColor: UIColor(FNTheme.paperLine)
             )
             context.coordinator.lastPaperKey = key
         }
 
+        guard !context.coordinator.hasLocalCanvasChanges else { return }
         guard context.coordinator.lastAppliedData != drawingData else { return }
         let current = canvas.drawing.dataRepresentation()
         if current == drawingData {
@@ -120,6 +138,19 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         context.coordinator.isApplyingExternalDrawing = false
     }
 
+    static func dismantleUIView(_ scrollView: UIScrollView, coordinator: Coordinator) {
+        coordinator.cancelDebouncedCallback()
+        coordinator.canvasView?.delegate = nil
+    }
+
+    private func makeTool() -> PKTool {
+        tool.makePencilKitTool(color: color, lineWidth: lineWidth)
+    }
+
+    private func makeToolKey() -> String {
+        "\(tool.rawValue)-\(color.description)-\(lineWidth)"
+    }
+
     private func paperKey(style: PaperStyle, tone: String, traits: UITraitCollection) -> String {
         "\(style.rawValue)-\(tone)-\(traits.userInterfaceStyle.rawValue)"
     }
@@ -128,10 +159,13 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
         var parent: InfinitePencilCanvasView
         fileprivate weak var contentView: PaperTiledContentView?
         weak var canvasView: PKCanvasView?
-        weak var eraserOverlay: PressureEraserCanvasOverlay?
         var lastAppliedData = Data()
+        var lastToolKey = ""
         var lastPaperKey = ""
         var isApplyingExternalDrawing = false
+        var hasLocalCanvasChanges = false
+        var temporaryEraser: PencilTemporaryEraserController?
+        private var debounceWorkItem: DispatchWorkItem?
 
         init(parent: InfinitePencilCanvasView) {
             self.parent = parent
@@ -147,8 +181,27 @@ struct InfinitePencilCanvasView: UIViewRepresentable {
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isApplyingExternalDrawing else { return }
+            hasLocalCanvasChanges = true
+            parent.controller.markDrawingChanged()
+            debounceWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak canvasView] in
+                guard let self, let canvasView else { return }
+                self.emitLatestDrawing(from: canvasView)
+            }
+            debounceWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+        }
+
+        func cancelDebouncedCallback() {
+            debounceWorkItem?.cancel()
+            debounceWorkItem = nil
+        }
+
+        private func emitLatestDrawing(from canvasView: PKCanvasView) {
             let data = canvasView.drawing.dataRepresentation()
             lastAppliedData = data
+            hasLocalCanvasChanges = false
+            parent.controller.markDrawingFlushed()
             parent.onDrawingChanged(data)
         }
     }
@@ -210,5 +263,3 @@ fileprivate final class PaperTiledContentView: UIView {
         backgroundColor = UIColor(patternImage: tile)
     }
 }
-
-

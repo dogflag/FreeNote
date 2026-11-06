@@ -16,6 +16,7 @@ enum FreeNoteError: Error, LocalizedError, Equatable {
     case cannotDeleteLastPage(UUID)
     case importSourceUnreadable(String)
     case documentHasNoReadablePages(String)
+    case unsupportedPreview(String)
     case persistenceFailed(String)
     case fileOperationFailed(String)
     case invalidState(String)
@@ -52,6 +53,8 @@ enum FreeNoteError: Error, LocalizedError, Equatable {
             return "无法读取导入文件：\(name)。"
         case let .documentHasNoReadablePages(name):
             return "文档没有可读取的页面，未加入书架：\(name)。"
+        case let .unsupportedPreview(name):
+            return "暂不支持预览该文件：\(name)。"
         case let .persistenceFailed(message):
             return "本地数据保存失败：\(message)"
         case let .fileOperationFailed(message):

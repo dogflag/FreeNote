@@ -15,6 +15,7 @@ enum FNTheme {
     static let card = adaptive(light: 0xFCFAF5, dark: 0x242B27)
     static let cardRaised = adaptive(light: 0xFFFEFB, dark: 0x2A322D)
     static let divider = adaptive(light: 0xE3DED3, dark: 0x353D38)
+    static let paperLine = adaptive(light: 0xD9D4C9, dark: 0x414A44)
     static let shade = Color.black.opacity(0.18)
     static let danger = adaptive(light: 0xA8564F, dark: 0xE19A93)
 
@@ -60,11 +61,11 @@ enum FNTheme {
     static func paperColor(tone: String) -> Color {
         switch tone {
         case "pureWhite":
-            return adaptive(light: 0xFFFEFB, dark: 0xE8E5DC)
+            return adaptive(light: 0xFFFEFB, dark: 0x1E2320)
         case "gray":
-            return adaptive(light: 0xF1F0EB, dark: 0xD8D8D1)
+            return adaptive(light: 0xF1F0EB, dark: 0x252824)
         default:
-            return adaptive(light: 0xFDFBF5, dark: 0xEBE7DD)
+            return adaptive(light: 0xFDFBF5, dark: 0x252824)
         }
     }
 }

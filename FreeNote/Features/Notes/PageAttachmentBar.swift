@@ -2,10 +2,23 @@ import SwiftUI
 import UIKit
 
 struct PageAttachmentBar: View {
+    let attachments: [AttachmentRef]
     let resources: [ResourceItem]
+    let allowsPageInsert: Bool
     let urlFor: (ResourceItem) -> URL?
-    let onOpen: (ResourceItem) -> Void
-    let onDetach: (ResourceItem) -> Void
+    let onOpen: (ResourceItem, Int?) -> Void
+    let onDetach: (AttachmentRef) -> Void
+    let onInsertAfter: (ResourceItem) -> Void
+
+    private var items: [AttachmentDisplayItem] {
+        let resourceMap = Dictionary(uniqueKeysWithValues: resources.map { ($0.id, $0) })
+        return attachments.map { attachment in
+            AttachmentDisplayItem(
+                attachment: attachment,
+                resource: resourceMap[attachment.resourceID]
+            )
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -14,7 +27,7 @@ struct PageAttachmentBar: View {
                     .font(.system(size: 10, weight: .semibold))
                 Text("页面附件")
                     .font(.system(size: 10, weight: .semibold))
-                Text("\(resources.count)")
+                Text("\(items.count)")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(FNTheme.tertiaryInk)
                 Spacer()
@@ -24,12 +37,18 @@ struct PageAttachmentBar: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(resources) { resource in
+                    ForEach(items) { item in
                         AttachmentResourceCard(
-                            resource: resource,
-                            url: urlFor(resource),
-                            onOpen: { onOpen(resource) },
-                            onDetach: { onDetach(resource) }
+                            item: item,
+                            url: item.resource.flatMap { urlFor($0) },
+                            canInsertPages: allowsPageInsert && item.canInsertPages,
+                            onOpen: {
+                                if let resource = item.resource { onOpen(resource, item.attachment.pageIndex) }
+                            },
+                            onDetach: { onDetach(item.attachment) },
+                            onInsertAfter: {
+                                if let resource = item.resource { onInsertAfter(resource) }
+                            }
                         )
                     }
                 }
@@ -47,25 +66,39 @@ struct PageAttachmentBar: View {
     }
 }
 
-private struct AttachmentResourceCard: View {
+private struct AttachmentDisplayItem: Identifiable {
+    let attachment: AttachmentRef
     let resource: ResourceItem?
+
+    var id: UUID { attachment.id }
+
+    var canInsertPages: Bool {
+        guard attachment.pageIndex == nil, let resource else { return false }
+        return ["pdf", "pptx", "epub"].contains(resource.fileName.pathExtension.lowercased())
+    }
+}
+
+private struct AttachmentResourceCard: View {
+    let item: AttachmentDisplayItem
     let url: URL?
+    let canInsertPages: Bool
     let onOpen: () -> Void
     let onDetach: () -> Void
+    let onInsertAfter: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 7) {
             Button(action: onOpen) {
                 HStack(spacing: 8) {
                     thumbnail
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(resource?.title ?? "资源缺失")
+                        Text(item.resource?.title ?? "资源缺失")
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(FNTheme.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
-                        if let resource {
-                            Text(resource.kind.fnTitle)
+                        if let resource = item.resource {
+                            Text(detailText(for: resource))
                                 .font(.system(size: 8))
                                 .foregroundStyle(FNTheme.tertiaryInk)
                         }
@@ -75,7 +108,18 @@ private struct AttachmentResourceCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(resource == nil)
+            .disabled(item.resource == nil)
+
+            if canInsertPages {
+                Menu {
+                    Button("拆页插入到当前页之后", action: onInsertAfter)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(FNTheme.secondaryInk)
+                }
+                .buttonStyle(.plain)
+            }
 
             Button(action: onDetach) {
                 Image(systemName: "xmark.circle.fill")
@@ -86,7 +130,7 @@ private struct AttachmentResourceCard: View {
             .accessibilityLabel("移除附件")
         }
         .padding(.horizontal, 8)
-        .frame(width: 156, height: 54)
+        .frame(width: canInsertPages ? 188 : 156, height: 54)
         .background(FNTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
@@ -95,11 +139,18 @@ private struct AttachmentResourceCard: View {
         )
     }
 
+    private func detailText(for resource: ResourceItem) -> String {
+        if let pageIndex = item.attachment.pageIndex {
+            return "\(resource.kind.fnTitle) · 第 \(pageIndex + 1) 页"
+        }
+        return resource.kind.fnTitle
+    }
+
     @ViewBuilder
     private var thumbnail: some View {
-        if let resource, resource.kind == .image, let url {
+        if let resource = item.resource, resource.kind == .image, let url {
             AttachmentImageThumbnail(url: url)
-        } else if let resource {
+        } else if let resource = item.resource {
             Image(systemName: resource.kind.fnSymbol)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.white)

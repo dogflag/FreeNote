@@ -76,7 +76,7 @@ struct LibraryView: View {
                 .environmentObject(store)
         }
         .sheet(item: $selectedResource) { resource in
-            QuickLookResourceSheet(resource: resource)
+            AttachmentPreviewView(resource: resource)
                 .environmentObject(store)
         }
         .alert("移除资源？", isPresented: $showingDeleteConfirmation) {

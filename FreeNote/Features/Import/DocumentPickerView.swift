@@ -10,7 +10,7 @@ enum FNImportFileTypes {
             "doc", "docx", "docm",
             "ppt", "pptx", "pptm",
             "xls", "xlsx", "xlsm", "xlsb",
-            "csv", "txt", "md", "markdown", "rtf",
+            "csv", "txt", "md", "markdown", "rtf", "html", "htm",
             "png", "jpg", "jpeg", "heic", "heif", "webp", "gif", "tif", "tiff",
             "mp3", "m4a", "wav", "aac", "flac", "ogg"
         ]

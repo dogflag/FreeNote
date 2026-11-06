@@ -2,8 +2,10 @@
 import UIKit
 
 struct NotebookEditorView: View {
+    private static let logicalPageSize = CGSize(width: 820, height: 1160)
     @EnvironmentObject private var store: FreeNoteStore
     @Environment(\.dismiss) private var dismissView
+    @Environment(\.colorScheme) private var colorScheme
     let notebookID: UUID
     let isFullScreen: Bool
     let initialPageID: UUID?
@@ -12,7 +14,8 @@ struct NotebookEditorView: View {
     @State private var drawingData = Data()
     @State private var lastDrawingData = Data()
     @State private var tool: DrawingTool = .pen
-    @State private var inkColor = UIColor(hex: 0x26322F)
+    @State private var inkColor = UIColor.black
+    @State private var hasManuallySelectedInkColor = false
     @State private var lineWidth: CGFloat = 3
     @State private var saveState: DrawingSaveState = .saved
     @State private var showingPalette = false
@@ -21,20 +24,33 @@ struct NotebookEditorView: View {
     @State private var showingImport = false
     @State private var showingDeletePage = false
     @State private var showingFullScreenEditor = false
+    @State private var toolbarOffset = CGSize.zero
+    @State private var toolbarDragOrigin = CGSize.zero
+    @State private var showingFullScreenHint = false
+    @State private var showingCanvasNavigator = false
+    @State private var isInsertingAttachmentPages = false
     @State private var errorMessage: String?
     @State private var didInitialize = false
     @State private var drawingReadOnly = false
     @State private var drawingHasPendingSave = false
     @State private var drawingLoadError: String?
     @State private var saveTask: Task<Void, Never>?
-    @State private var selectedAttachmentResource: ResourceItem?
+    @State private var selectedAttachmentPreview: AttachmentPreviewRequest?
     @State private var pageAttachmentResources: [ResourceItem] = []
     @StateObject private var canvasController = PencilCanvasController()
 
-    init(notebookID: UUID, isFullScreen: Bool = false, initialPageID: UUID? = nil) {
+    init(
+        notebookID: UUID,
+        isFullScreen: Bool = false,
+        initialPageID: UUID? = nil,
+        initialInkColor: UIColor? = nil,
+        initialInkWasManuallySelected: Bool = false
+    ) {
         self.notebookID = notebookID
         self.isFullScreen = isFullScreen
         self.initialPageID = initialPageID
+        _inkColor = State(initialValue: initialInkColor ?? UIColor.black)
+        _hasManuallySelectedInkColor = State(initialValue: initialInkWasManuallySelected)
     }
 
     private var notebook: Notebook? {
@@ -49,6 +65,15 @@ struct NotebookEditorView: View {
     private var currentPageIndex: Int {
         guard let notebook, let currentPage else { return 1 }
         return (notebook.pages.firstIndex(where: { $0.id == currentPage.id }) ?? 0) + 1
+    }
+
+    private var currentAttachmentPageContext: AttachmentPageContext? {
+        guard let attachment = currentPage?.attachments.first(where: { $0.pageIndex != nil }),
+              let resource = store.resources.first(where: { $0.id == attachment.resourceID }),
+              let url = store.storedURL(for: resource) else {
+            return nil
+        }
+        return AttachmentPageContext(attachment: attachment, resource: resource, url: url)
     }
 
     var body: some View {
@@ -66,7 +91,14 @@ struct NotebookEditorView: View {
         .background(FNTheme.appBackground)
         .statusBar(hidden: isFullScreen)
         .persistentSystemOverlays(isFullScreen ? .hidden : .automatic)
-        .onAppear(perform: initializePagesIfNeeded)
+        .onAppear {
+            applyDefaultInkColorIfNeeded()
+            initializePagesIfNeeded()
+            showFullScreenHintIfNeeded()
+        }
+        .onChange(of: colorScheme) { _ in
+            applyDefaultInkColorIfNeeded()
+        }
         .onChange(of: notebook?.pages.map(\.id) ?? []) { _ in
             ensurePageSelection()
         }
@@ -87,7 +119,9 @@ struct NotebookEditorView: View {
             NotebookEditorView(
                 notebookID: notebookID,
                 isFullScreen: true,
-                initialPageID: selectedPageID
+                initialPageID: selectedPageID,
+                initialInkColor: inkColor,
+                initialInkWasManuallySelected: hasManuallySelectedInkColor
             )
             .environmentObject(store)
         }
@@ -100,8 +134,8 @@ struct NotebookEditorView: View {
             )
             .environmentObject(store)
         }
-        .sheet(item: $selectedAttachmentResource) { resource in
-            QuickLookResourceSheet(resource: resource)
+        .sheet(item: $selectedAttachmentPreview) { request in
+            AttachmentPreviewView(resource: request.resource, pageIndex: request.pageIndex)
                 .environmentObject(store)
         }
         .alert("无法删除页面", isPresented: Binding(
@@ -167,14 +201,20 @@ struct NotebookEditorView: View {
             VStack(spacing: 6) {
                 if !pageAttachmentResources.isEmpty {
                     PageAttachmentBar(
+                        attachments: currentPage?.attachments ?? [],
                         resources: pageAttachmentResources,
+                        allowsPageInsert: notebook.kind == .paged,
                         urlFor: { resource in
                             store.storedURL(for: resource)
                         },
-                        onOpen: { resource in
-                            selectedAttachmentResource = resource
+                        onOpen: { resource, pageIndex in
+                            selectedAttachmentPreview = AttachmentPreviewRequest(
+                                resource: resource,
+                                pageIndex: pageIndex
+                            )
                         },
-                        onDetach: detachAttachment
+                        onDetach: detachAttachment,
+                        onInsertAfter: insertAttachmentPages
                     )
                 }
 
@@ -188,73 +228,115 @@ struct NotebookEditorView: View {
     }
 
     private func fullScreenContent(_ notebook: Notebook) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            fullScreenCanvasArea(notebook)
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .bottomTrailing) {
+                fullScreenCanvasArea(notebook)
+                    .ignoresSafeArea()
 
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        guard flushPendingDrawing() else { return }
-                        dismissView()
-                    } label: {
-                        Label("退出全屏", systemImage: "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 11, weight: .semibold))
+                if showingFullScreenHint {
+                    VStack {
+                        Text("两指双击退出全屏")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(FNTheme.ink)
                             .padding(.horizontal, 14)
-                            .frame(height: 38)
+                            .frame(height: 36)
                             .background(FNTheme.cardRaised.opacity(0.96))
                             .clipShape(Capsule())
                             .overlay(Capsule().stroke(FNTheme.divider, lineWidth: 1))
-                            .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+                            .shadow(color: Color.black.opacity(0.10), radius: 10, y: 4)
+                        Spacer()
                     }
-                    .buttonStyle(.plain)
-                }
-                .padding(.top, 12)
-                .padding(.trailing, 16)
-                Spacer()
-            }
-
-            VStack(spacing: 8) {
-                if notebook.kind == .paged {
-                    fullScreenPageControls(notebook)
+                    .padding(.top, 18)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
                 }
 
-                drawingToolbar
-                    .clipShape(Capsule())
-            }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 16)
-
-            OutlineHandle {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showingOutline = true
+                VStack {
+                    Spacer()
+                    drawingToolbar
+                        .clipShape(Capsule())
+                        .offset(toolbarOffset)
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 4)
+                                .onChanged { value in
+                                    let accumulated = CGSize(
+                                        width: toolbarDragOrigin.width + value.translation.width,
+                                        height: toolbarDragOrigin.height + value.translation.height
+                                    )
+                                    toolbarOffset = clampedToolbarOffset(
+                                        accumulated,
+                                        canvasSize: proxy.size
+                                    )
+                                }
+                                .onEnded { _ in
+                                    toolbarDragOrigin = toolbarOffset
+                                }
+                        )
                 }
-            }
-            .padding(.trailing, 18)
-            .padding(.bottom, 142)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, 16)
 
-            if showingOutline {
-                OutlineDrawerOverlay(
-                    isPresented: $showingOutline,
-                    documentTitle: notebook.title,
-                    pageCount: max(notebook.pages.count, 1),
-                    initialNodes: notebook.outline,
-                    initialPage: currentPageIndex,
-                    onSave: { try store.updateOutline($0, forNotebookID: notebook.id) },
-                    onJumpToPage: { selectPageNumber($0) }
-                )
-                .transition(.opacity)
-                .zIndex(20)
+                OutlineHandle {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showingOutline = true
+                    }
+                }
+                .padding(.trailing, 18)
+                .padding(.bottom, 142)
+
+                if showingOutline {
+                    OutlineDrawerOverlay(
+                        isPresented: $showingOutline,
+                        documentTitle: notebook.title,
+                        pageCount: max(notebook.pages.count, 1),
+                        initialNodes: notebook.outline,
+                        initialPage: currentPageIndex,
+                        onSave: { try store.updateOutline($0, forNotebookID: notebook.id) },
+                        onJumpToPage: { selectPageNumber($0) }
+                    )
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
             }
         }
+        .background(
+            WindowTwoFingerDoubleTapInstaller {
+                dismissFullScreenAfterFlush()
+            }
+            .frame(width: 1, height: 1)
+        )
         .animation(.easeInOut(duration: 0.2), value: showingOutline)
+        .animation(.easeInOut(duration: 0.25), value: showingFullScreenHint)
+    }
+
+    private func clampedToolbarOffset(_ translation: CGSize, canvasSize: CGSize) -> CGSize {
+        let toolbarWidth = min(max(canvasSize.width - 32, 320), 620)
+        let maxHorizontal = max((canvasSize.width - toolbarWidth) / 2, 0)
+        let maxUpward = max(canvasSize.height - 120, 0)
+        return CGSize(
+            width: min(max(translation.width, -maxHorizontal), maxHorizontal),
+            height: min(max(translation.height, -maxUpward), 0)
+        )
+    }
+
+    private func dismissFullScreenAfterFlush() {
+        guard flushPendingDrawing() else { return }
+        dismissView()
+    }
+
+    private func showFullScreenHintIfNeeded() {
+        guard isFullScreen else { return }
+        showingFullScreenHint = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showingFullScreenHint = false
+            }
+        }
     }
 
     @ViewBuilder
     private func fullScreenCanvasArea(_ notebook: Notebook) -> some View {
-        if notebook.kind == .infiniteCanvas {
+        if notebook.kind == .infiniteCanvas, currentAttachmentPageContext == nil {
             ZStack(alignment: .topLeading) {
                 if let pageID = selectedPageID {
                     InfinitePencilCanvasView(
@@ -270,11 +352,8 @@ struct NotebookEditorView: View {
                         }
                     )
                     .id(pageID)
-                    .allowsHitTesting(!drawingReadOnly)
+                    .allowsHitTesting(!drawingReadOnly && !isInsertingAttachmentPages)
                 }
-
-                infiniteCanvasControls
-                    .padding(14)
 
                 if drawingReadOnly, let pageID = selectedPageID {
                     FNRecoveryReadOnlyView(
@@ -288,55 +367,54 @@ struct NotebookEditorView: View {
             .background(FNTheme.appBackground)
         } else {
             GeometryReader { proxy in
+                let logicalSize = Self.logicalPageSize
                 let availableWidth = max(proxy.size.width - 16, 280)
                 let availableHeight = max(proxy.size.height - 16, 420)
-                let pageWidth = min(availableWidth, availableHeight * 0.707, 940)
-                let pageHeight = pageWidth / 0.707
+                let scale = min(availableWidth / logicalSize.width, availableHeight / logicalSize.height)
                 ScrollView(.vertical, showsIndicators: false) {
                     ZStack {
-                        FNPaperBackgroundView(style: notebook.paperStyle, tone: store.settings.paperTone)
+                        pagedBackground(notebook)
                         pagedPencilCanvas(notebook)
                     }
-                    .frame(width: pageWidth, height: pageHeight)
+                    .frame(width: logicalSize.width, height: logicalSize.height)
+                    .scaleEffect(scale)
+                    .frame(
+                        width: logicalSize.width * scale,
+                        height: logicalSize.height * scale
+                    )
                     .padding(8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                 }
                 .background(FNTheme.appBackground)
             }
         }
     }
 
-    private func fullScreenPageControls(_ notebook: Notebook) -> some View {
-        HStack(spacing: 12) {
+    private var compactPageControls: some View {
+        HStack(spacing: 5) {
             Button {
                 selectPageNumber(currentPageIndex - 1)
             } label: {
                 Image(systemName: "chevron.left")
-                    .frame(width: 30, height: 28)
+                    .frame(width: 28, height: 30)
             }
             .disabled(currentPageIndex <= 1)
 
-            Text("第 \(currentPageIndex) / \(max(notebook.pages.count, 1)) 页")
-                .font(.system(size: 10, weight: .semibold))
+            Text("\(currentPageIndex)/\(max(notebook?.pages.count ?? 1, 1))")
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(FNTheme.secondaryInk)
-                .frame(minWidth: 86)
+                .frame(minWidth: 34)
 
             Button {
                 selectPageNumber(currentPageIndex + 1)
             } label: {
                 Image(systemName: "chevron.right")
-                    .frame(width: 30, height: 28)
+                    .frame(width: 28, height: 30)
             }
-            .disabled(currentPageIndex >= notebook.pages.count)
+            .disabled(currentPageIndex >= (notebook?.pages.count ?? 1))
         }
         .foregroundStyle(FNTheme.secondaryInk)
         .buttonStyle(.plain)
-        .padding(.horizontal, 8)
-        .frame(height: 38)
-        .background(FNTheme.cardRaised.opacity(0.96))
-        .clipShape(Capsule())
-        .overlay(Capsule().stroke(FNTheme.divider, lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.10), radius: 10, y: 4)
     }
 
     private func editorHeader(_ notebook: Notebook) -> some View {
@@ -387,16 +465,11 @@ struct NotebookEditorView: View {
             }
 
             FNTopActionButton(
-                symbol: isFullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                title: isFullScreen ? "退出全屏" : "全屏"
+                symbol: "arrow.up.left.and.arrow.down.right",
+                title: "全屏"
             ) {
-                if isFullScreen {
-                    guard flushPendingDrawing() else { return }
-                    dismissView()
-                } else {
-                    guard flushPendingDrawing() else { return }
-                    showingFullScreenEditor = true
-                }
+                guard flushPendingDrawing() else { return }
+                showingFullScreenEditor = true
             }
 
             Menu {
@@ -428,7 +501,7 @@ struct NotebookEditorView: View {
 
     @ViewBuilder
     private func canvasArea(_ notebook: Notebook) -> some View {
-        if notebook.kind == .infiniteCanvas {
+        if notebook.kind == .infiniteCanvas, currentAttachmentPageContext == nil {
             infiniteCanvasArea(notebook)
         } else {
             pagedCanvasArea(notebook)
@@ -437,23 +510,28 @@ struct NotebookEditorView: View {
 
     private func pagedCanvasArea(_ notebook: Notebook) -> some View {
         GeometryReader { proxy in
-            let maxPageWidth = max(proxy.size.width - 110, 280)
-            let maxPageHeight = max(proxy.size.height - 56, 420)
-            let pagedWidth = min(maxPageWidth, maxPageHeight * 0.707, 900)
-            let pagedHeight = pagedWidth / 0.707
+            let logicalSize = Self.logicalPageSize
+            let availableWidth = max(proxy.size.width - 110, 280)
+            let availableHeight = max(proxy.size.height - 56, 420)
+            let scale = min(availableWidth / logicalSize.width, availableHeight / logicalSize.height)
 
             ScrollView(.vertical, showsIndicators: false) {
                 ZStack {
-                    FNPaperBackgroundView(style: notebook.paperStyle, tone: store.settings.paperTone)
+                    pagedBackground(notebook)
                     pagedPencilCanvas(notebook)
                 }
-                .frame(width: pagedWidth, height: pagedHeight)
+                .frame(width: logicalSize.width, height: logicalSize.height)
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .stroke(FNTheme.divider.opacity(0.7), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.10), radius: 18, y: 7)
+                .scaleEffect(scale)
+                .frame(
+                    width: logicalSize.width * scale,
+                    height: logicalSize.height * scale
+                )
                 .padding(.horizontal, 34)
                 .padding(.top, 16)
                 .padding(.bottom, 14)
@@ -487,7 +565,7 @@ struct NotebookEditorView: View {
                             }
                         )
                         .id(pageID)
-                        .allowsHitTesting(!drawingReadOnly)
+                        .allowsHitTesting(!drawingReadOnly && !isInsertingAttachmentPages)
                     } else {
                         Color.clear
                     }
@@ -498,26 +576,6 @@ struct NotebookEditorView: View {
                         .stroke(FNTheme.divider.opacity(0.8), lineWidth: 1)
                 )
                 .shadow(color: Color.black.opacity(0.10), radius: 16, y: 6)
-
-                infiniteCanvasControls
-                    .padding(14)
-
-                VStack {
-                    Spacer()
-                    HStack {
-                        Label("手指平移 · 双指缩放 · Apple Pencil 书写", systemImage: "hand.draw")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(FNTheme.secondaryInk)
-                            .padding(.horizontal, 10)
-                            .frame(height: 27)
-                            .background(FNTheme.cardRaised.opacity(0.94))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(FNTheme.divider, lineWidth: 1))
-                        Spacer()
-                    }
-                    .padding(14)
-                }
-                .allowsHitTesting(false)
 
                 if drawingReadOnly, let pageID = selectedPageID {
                     FNRecoveryReadOnlyView(
@@ -540,51 +598,62 @@ struct NotebookEditorView: View {
         }
     }
 
-    private var infiniteCanvasControls: some View {
-        HStack(spacing: 4) {
-            Button {
-                canvasController.zoomOut()
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
-                    .frame(width: 32, height: 30)
-            }
-            .accessibilityLabel("缩小")
-
-            Text("\(Int((canvasController.zoomScale * 100).rounded()))%")
-                .font(.system(size: 10, weight: .semibold))
+    private var canvasNavigatorPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("画布导航")
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(FNTheme.secondaryInk)
-                .frame(width: 44)
 
-            Button {
-                canvasController.zoomIn()
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-                    .frame(width: 32, height: 30)
+            HStack(spacing: 8) {
+                Button {
+                    canvasController.zoomOut()
+                } label: {
+                    Image(systemName: "minus.magnifyingglass")
+                        .frame(width: 34, height: 32)
+                }
+                Text("\(Int((canvasController.zoomScale * 100).rounded()))%")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FNTheme.ink)
+                    .frame(width: 48)
+                Button {
+                    canvasController.zoomIn()
+                } label: {
+                    Image(systemName: "plus.magnifyingglass")
+                        .frame(width: 34, height: 32)
+                }
             }
-            .accessibilityLabel("放大")
-
-            Rectangle().fill(FNTheme.divider).frame(width: 1, height: 18)
+            .foregroundStyle(FNTheme.secondaryInk)
+            .buttonStyle(.plain)
 
             Button {
                 canvasController.recenter()
             } label: {
-                Label("回中", systemImage: "scope")
-                    .font(.system(size: 9, weight: .medium))
-                    .padding(.horizontal, 7)
-                    .frame(height: 30)
+                Label("画布回中", systemImage: "scope")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(FNTheme.ink)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(FNTheme.sidebar)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            .accessibilityLabel("画布回中")
+            .buttonStyle(.plain)
         }
-        .foregroundStyle(FNTheme.secondaryInk)
-        .buttonStyle(.plain)
-        .padding(5)
-        .background(FNTheme.cardRaised.opacity(0.96))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(FNTheme.divider, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 10, y: 3)
+        .padding(14)
+        .background(FNTheme.cardRaised)
+    }
+
+    @ViewBuilder
+    private func pagedBackground(_ notebook: Notebook) -> some View {
+        if let context = currentAttachmentPageContext {
+            AttachmentPageBackgroundView(
+                attachment: context.attachment,
+                resource: context.resource,
+                url: context.url
+            )
+            .id("\(context.resource.id)-\(context.attachment.pageIndex ?? -1)")
+        } else {
+            FNPaperBackgroundView(style: notebook.paperStyle, tone: store.settings.paperTone)
+        }
     }
 
     @ViewBuilder
@@ -602,7 +671,7 @@ struct NotebookEditorView: View {
                         handleDrawingChanged(data, pageID: pageID)
                     }
                 )
-                .allowsHitTesting(!drawingReadOnly)
+                .allowsHitTesting(!drawingReadOnly && !isInsertingAttachmentPages)
 
                 if drawingReadOnly {
                     FNRecoveryReadOnlyView(
@@ -673,7 +742,7 @@ struct NotebookEditorView: View {
                         Image(systemName: item.symbol)
                             .font(.system(size: 15, weight: .medium))
                         if item == .eraser {
-                            Text("压感橡皮")
+                            Text("橡皮")
                                 .font(.system(size: 7, weight: .medium))
                                 .lineLimit(1)
                         }
@@ -753,6 +822,24 @@ struct NotebookEditorView: View {
                 widthPopover
             }
 
+            if notebook?.kind == .infiniteCanvas {
+                Button {
+                    showingCanvasNavigator.toggle()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(FNTheme.secondaryInk)
+                        .frame(width: 34, height: 34)
+                        .background(FNTheme.sidebar)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("画布缩放与回中")
+                .popover(isPresented: $showingCanvasNavigator, arrowEdge: .bottom) {
+                    canvasNavigatorPopover
+                }
+            }
+
             if !store.settings.autoSave {
                 divider
                 Button {
@@ -795,6 +882,7 @@ struct NotebookEditorView: View {
                     let color = inkPalette[index]
                     Button {
                         inkColor = color
+                        hasManuallySelectedInkColor = true
                         showingPalette = false
                     } label: {
                         Circle()
@@ -802,8 +890,10 @@ struct NotebookEditorView: View {
                             .frame(width: 25, height: 25)
                             .overlay(
                                 Circle().stroke(
-                                    color == inkColor ? FNTheme.accent : FNTheme.divider,
-                                    lineWidth: color == inkColor ? 2 : 1
+                                    color == inkColor
+                                        ? FNTheme.accent
+                                        : (isMonochrome(color) ? FNTheme.secondaryInk : FNTheme.divider),
+                                    lineWidth: color == inkColor ? 2 : (isMonochrome(color) ? 1.5 : 1)
                                 )
                             )
                     }
@@ -825,7 +915,10 @@ struct NotebookEditorView: View {
     private var customInkColorBinding: Binding<Color> {
         Binding(
             get: { Color(uiColor: inkColor) },
-            set: { inkColor = UIColor($0) }
+            set: {
+                inkColor = UIColor($0)
+                hasManuallySelectedInkColor = true
+            }
         )
     }
 
@@ -841,12 +934,12 @@ struct NotebookEditorView: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(FNTheme.tertiaryInk)
             if tool == .eraser {
-                Text("压感橡皮：Pencil 力度越大，擦除半径越大。")
+                Text("长按 Apple Pencil 约 0.36 秒临时切换为 bitmap 橡皮，松开自动恢复当前工具。")
                     .font(.system(size: 8))
                     .foregroundStyle(FNTheme.tertiaryInk)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(width: 180, alignment: .leading)
-                Text("双击工具栏中的“压感橡皮”可清空当前画布，支持撤销。")
+                Text("双击工具栏中的“橡皮”可清空当前画布，支持撤销。")
                     .font(.system(size: 8))
                     .foregroundStyle(FNTheme.tertiaryInk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -859,6 +952,7 @@ struct NotebookEditorView: View {
     private var inkPalette: [UIColor] {
         [
             UIColor(hex: 0x000000),
+            UIColor.white,
             UIColor(hex: 0x26322F),
             UIColor(hex: 0x4F6759),
             UIColor(hex: 0x486A88),
@@ -866,6 +960,23 @@ struct NotebookEditorView: View {
             UIColor(hex: 0xB38B42),
             UIColor(hex: 0x775E81)
         ]
+    }
+
+    private func applyDefaultInkColorIfNeeded() {
+        guard !hasManuallySelectedInkColor else { return }
+        inkColor = colorScheme == .dark ? UIColor.white : UIColor.black
+    }
+
+    private func isMonochrome(_ color: UIColor) -> Bool {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return false
+        }
+        return (red < 0.08 && green < 0.08 && blue < 0.08)
+            || (red > 0.92 && green > 0.92 && blue > 0.92)
     }
 
     private func initializePagesIfNeeded() {
@@ -918,6 +1029,7 @@ struct NotebookEditorView: View {
             drawingData = data
             lastDrawingData = data
             drawingHasPendingSave = false
+            canvasController.markDrawingFlushed()
             drawingReadOnly = false
             drawingLoadError = nil
             saveState = .saved
@@ -977,6 +1089,15 @@ struct NotebookEditorView: View {
     private func flushPendingDrawing() -> Bool {
         saveTask?.cancel()
         saveTask = nil
+
+        if canvasController.hasUnflushedDrawingChanges,
+           let latestDrawing = canvasController.currentDrawingData {
+            drawingData = latestDrawing
+            lastDrawingData = latestDrawing
+            drawingHasPendingSave = true
+            canvasController.markDrawingFlushed()
+        }
+
         guard drawingHasPendingSave else { return true }
         guard !drawingReadOnly, let selectedPageID else { return false }
         return commitDrawing(lastDrawingData, pageID: selectedPageID)
@@ -1047,17 +1168,49 @@ struct NotebookEditorView: View {
         }
     }
 
-    private func detachAttachment(_ resource: ResourceItem) {
+    private func detachAttachment(_ attachment: AttachmentRef) {
         guard let selectedPageID else { return }
         do {
             try store.detachResource(
-                resourceID: resource.id,
+                resourceID: attachment.resourceID,
                 notebookID: notebookID,
                 pageID: selectedPageID
             )
             reloadPageAttachments()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func insertAttachmentPages(_ resource: ResourceItem) {
+        guard !isInsertingAttachmentPages,
+              notebook?.kind == .paged,
+              let anchorPageID = selectedPageID,
+              flushPendingDrawing() else { return }
+
+        isInsertingAttachmentPages = true
+        Task { @MainActor in
+            do {
+                let insertedPages = try await store.insertAttachmentPages(
+                    resourceID: resource.id,
+                    notebookID: notebookID,
+                    afterPageID: anchorPageID
+                )
+                guard flushPendingDrawing() else {
+                    isInsertingAttachmentPages = false
+                    return
+                }
+                isInsertingAttachmentPages = false
+                reloadPageAttachments()
+                if let firstInsertedPage = insertedPages.first {
+                    selectedPageID = firstInsertedPage.id
+                    loadDrawing(pageID: firstInsertedPage.id)
+                    reloadPageAttachments()
+                }
+            } catch {
+                isInsertingAttachmentPages = false
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -1107,3 +1260,17 @@ private enum DrawingSaveState: Equatable {
     }
 }
 
+
+
+private struct AttachmentPageContext {
+    let attachment: AttachmentRef
+    let resource: ResourceItem
+    let url: URL
+}
+
+
+private struct AttachmentPreviewRequest: Identifiable {
+    let id = UUID()
+    let resource: ResourceItem
+    let pageIndex: Int?
+}

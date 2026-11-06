@@ -440,6 +440,7 @@ struct ReaderView: View {
             annotationData = data
             lastAnnotationData = data
             annotationHasPendingSave = false
+            canvasController.markDrawingFlushed()
             annotationReadOnly = false
             annotationLoadError = nil
             saveState = .saved
@@ -482,6 +483,7 @@ struct ReaderView: View {
         do {
             try store.saveAnnotation(data, bookID: bookID, pageIndex: page)
             annotationHasPendingSave = false
+            canvasController.markDrawingFlushed()
             if page == currentPage {
                 saveState = .saved
             }
@@ -499,6 +501,15 @@ struct ReaderView: View {
     private func flushPendingAnnotation() -> Bool {
         annotationSaveTask?.cancel()
         annotationSaveTask = nil
+
+        if canvasController.hasUnflushedDrawingChanges,
+           let latestAnnotation = canvasController.currentDrawingData {
+            annotationData = latestAnnotation
+            lastAnnotationData = latestAnnotation
+            annotationHasPendingSave = true
+            canvasController.markDrawingFlushed()
+        }
+
         guard annotationHasPendingSave else { return true }
         guard let book, didInitialize, book.kind == .pdf, book.pageCount > 0, !annotationReadOnly else {
             return false

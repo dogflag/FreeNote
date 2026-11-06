@@ -14,7 +14,7 @@ enum DrawingTool: String, CaseIterable, Identifiable {
         switch self {
         case .pen: return "钢笔"
         case .highlighter: return "荧光笔"
-        case .eraser: return "压感橡皮"
+        case .eraser: return "橡皮"
         case .lasso: return "套索"
         }
     }
@@ -33,6 +33,19 @@ final class PencilCanvasController: ObservableObject {
     weak var canvasView: PKCanvasView?
     weak var navigationScrollView: UIScrollView?
     @Published private(set) var zoomScale: CGFloat = 1.0
+    private(set) var hasUnflushedDrawingChanges = false
+
+    var currentDrawingData: Data? {
+        canvasView?.drawing.dataRepresentation()
+    }
+
+    func markDrawingChanged() {
+        hasUnflushedDrawingChanges = true
+    }
+
+    func markDrawingFlushed() {
+        hasUnflushedDrawingChanges = false
+    }
 
     private var activeUndoManager: UndoManager? {
         canvasView?.undoManager ?? canvasView?.window?.undoManager
@@ -121,29 +134,90 @@ final class PencilCanvasController: ObservableObject {
     }
 }
 
-final class PencilCanvasHostView: UIView {
-    let canvasView = PKCanvasView()
-    let eraserOverlay = PressureEraserCanvasOverlay(frame: .zero)
+private final class PencilSnapshotLongPressRecognizer: UILongPressGestureRecognizer {
+    var onPencilDown: (() -> Void)?
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        isOpaque = false
-        canvasView.frame = bounds
-        canvasView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        eraserOverlay.frame = bounds
-        eraserOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        eraserOverlay.canvasView = canvasView
-        addSubview(canvasView)
-        addSubview(eraserOverlay)
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        if touches.contains(where: { $0.type == .pencil }) {
+            onPencilDown?()
+        }
+        super.touchesBegan(touches, with: event)
+    }
+}
+
+final class PencilTemporaryEraserController: NSObject, UIGestureRecognizerDelegate {
+    private weak var canvasView: PKCanvasView?
+    private var normalTool: PKTool
+    private var normalToolKey: String
+    private var toolBeforeTemporaryEraser: PKTool?
+    private var drawingAtPencilDown: PKDrawing?
+
+    init(canvasView: PKCanvasView, normalTool: PKTool, normalToolKey: String) {
+        self.canvasView = canvasView
+        self.normalTool = normalTool
+        self.normalToolKey = normalToolKey
+        super.init()
+
+        let recognizer = PencilSnapshotLongPressRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        recognizer.minimumPressDuration = 0.36
+        recognizer.numberOfTouchesRequired = 1
+        recognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        recognizer.cancelsTouchesInView = false
+        recognizer.delaysTouchesBegan = false
+        recognizer.delegate = self
+        recognizer.onPencilDown = { [weak self, weak canvasView] in
+            guard let self, let canvasView, self.toolBeforeTemporaryEraser == nil else { return }
+            self.drawingAtPencilDown = canvasView.drawing
+        }
+        canvasView.addGestureRecognizer(recognizer)
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    func updateNormalTool(_ tool: PKTool, key: String) {
+        guard normalToolKey != key else { return }
+        normalToolKey = key
+        normalTool = tool
+        if toolBeforeTemporaryEraser == nil {
+            canvasView?.tool = tool
+        }
     }
 
-    func setEraserMode(_ enabled: Bool, width: CGFloat) {
-        eraserOverlay.setEraserMode(enabled, width: width)
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        touch.type == .pencil
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
+    }
+
+    @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard let canvasView else { return }
+        switch recognizer.state {
+        case .began:
+            toolBeforeTemporaryEraser = canvasView.tool
+            if let snapshot = drawingAtPencilDown {
+                restoreSnapshot(snapshot, on: canvasView)
+            }
+            drawingAtPencilDown = nil
+            canvasView.tool = PKEraserTool(.bitmap)
+        case .ended, .cancelled, .failed:
+            if let previousTool = toolBeforeTemporaryEraser {
+                canvasView.tool = previousTool
+            } else {
+                canvasView.tool = normalTool
+            }
+            toolBeforeTemporaryEraser = nil
+            drawingAtPencilDown = nil
+        default:
+            break
+        }
+    }
+
+    private func restoreSnapshot(_ snapshot: PKDrawing, on canvasView: PKCanvasView) {
+        let undoManager = canvasView.undoManager ?? canvasView.window?.undoManager
+        undoManager?.disableUndoRegistration()
+        canvasView.drawing = snapshot
+        undoManager?.enableUndoRegistration()
+        canvasView.delegate?.canvasViewDrawingDidChange?(canvasView)
     }
 }
 
@@ -160,31 +234,47 @@ struct PencilCanvasView: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
-    func makeUIView(context: Context) -> PencilCanvasHostView {
-        let hostView = PencilCanvasHostView()
-        let canvas = hostView.canvasView
+    func makeUIView(context: Context) -> PKCanvasView {
+        let canvas = PKCanvasView()
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
         canvas.isScrollEnabled = false
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
         canvas.drawing = (try? PKDrawing(data: drawingData)) ?? PKDrawing()
-        canvas.tool = makeTool()
+
+        let toolKey = makeToolKey()
+        let initialTool = makeTool()
+        canvas.tool = initialTool
         canvas.delegate = context.coordinator
-        hostView.setEraserMode(tool == .eraser, width: lineWidth)
+
+        context.coordinator.canvasView = canvas
+        context.coordinator.lastAppliedData = drawingData
+        context.coordinator.lastToolKey = toolKey
+        context.coordinator.temporaryEraser = PencilTemporaryEraserController(
+            canvasView: canvas,
+            normalTool: initialTool,
+            normalToolKey: toolKey
+        )
+
         controller.canvasView = canvas
         controller.navigationScrollView = nil
-        context.coordinator.lastAppliedData = drawingData
-        return hostView
+        return canvas
     }
 
-    func updateUIView(_ hostView: PencilCanvasHostView, context: Context) {
+    func updateUIView(_ canvas: PKCanvasView, context: Context) {
         context.coordinator.parent = self
-        let canvas = hostView.canvasView
         controller.canvasView = canvas
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
-        canvas.tool = makeTool()
-        hostView.setEraserMode(tool == .eraser, width: lineWidth)
 
+        let toolKey = makeToolKey()
+        if context.coordinator.lastToolKey != toolKey {
+            let updatedTool = makeTool()
+            context.coordinator.lastToolKey = toolKey
+            canvas.tool = updatedTool
+            context.coordinator.temporaryEraser?.updateNormalTool(updatedTool, key: toolKey)
+        }
+
+        guard !context.coordinator.hasLocalCanvasChanges else { return }
         guard context.coordinator.lastAppliedData != drawingData else { return }
         let current = canvas.drawing.dataRepresentation()
         guard current != drawingData else {
@@ -198,14 +288,28 @@ struct PencilCanvasView: UIViewRepresentable {
         context.coordinator.isApplyingExternalDrawing = false
     }
 
+    static func dismantleUIView(_ canvasView: PKCanvasView, coordinator: Coordinator) {
+        coordinator.cancelDebouncedCallback()
+        canvasView.delegate = nil
+    }
+
     private func makeTool() -> PKTool {
         tool.makePencilKitTool(color: color, lineWidth: lineWidth)
     }
 
+    private func makeToolKey() -> String {
+        "\(tool.rawValue)-\(color.description)-\(lineWidth)"
+    }
+
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         var parent: PencilCanvasView
+        weak var canvasView: PKCanvasView?
         var lastAppliedData = Data()
+        var lastToolKey = ""
         var isApplyingExternalDrawing = false
+        var hasLocalCanvasChanges = false
+        var temporaryEraser: PencilTemporaryEraserController?
+        private var debounceWorkItem: DispatchWorkItem?
 
         init(parent: PencilCanvasView) {
             self.parent = parent
@@ -213,13 +317,31 @@ struct PencilCanvasView: UIViewRepresentable {
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             guard !isApplyingExternalDrawing else { return }
+            hasLocalCanvasChanges = true
+            parent.controller.markDrawingChanged()
+            debounceWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self, weak canvasView] in
+                guard let self, let canvasView else { return }
+                self.emitLatestDrawing(from: canvasView)
+            }
+            debounceWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+        }
+
+        func cancelDebouncedCallback() {
+            debounceWorkItem?.cancel()
+            debounceWorkItem = nil
+        }
+
+        private func emitLatestDrawing(from canvasView: PKCanvasView) {
             let data = canvasView.drawing.dataRepresentation()
             lastAppliedData = data
+            hasLocalCanvasChanges = false
+            parent.controller.markDrawingFlushed()
             parent.onDrawingChanged(data)
         }
     }
 }
-
 
 extension DrawingTool {
     func makePencilKitTool(color: UIColor, lineWidth: CGFloat) -> PKTool {

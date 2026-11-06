@@ -41,10 +41,33 @@ struct NotePage: Identifiable, Codable, Hashable, Sendable {
 struct AttachmentRef: Identifiable, Codable, Hashable, Sendable {
     var id: UUID
     var resourceID: UUID
+    /// 0-based source page/slide/chapter index. Nil means the whole resource.
+    var pageIndex: Int?
 
-    init(id: UUID = UUID(), resourceID: UUID) {
+    init(id: UUID = UUID(), resourceID: UUID, pageIndex: Int? = nil) {
         self.id = id
         self.resourceID = resourceID
+        self.pageIndex = pageIndex
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case resourceID
+        case pageIndex
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        resourceID = try container.decode(UUID.self, forKey: .resourceID)
+        pageIndex = try container.decodeIfPresent(Int.self, forKey: .pageIndex)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(resourceID, forKey: .resourceID)
+        try container.encodeIfPresent(pageIndex, forKey: .pageIndex)
     }
 }
 

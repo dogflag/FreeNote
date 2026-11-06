@@ -255,12 +255,17 @@ enum OutlineEditor {
             oldIndexByID[id] = offset + 1
         }
 
+        var seenNewPageIDs = Set<UUID>()
         var newIndexByOldIndex: [Int: Int] = [:]
         for (offset, id) in newPageIDs.enumerated() {
-            guard let oldIndex = oldIndexByID[id] else {
-                throw FreeNoteError.invalidState("页面迁移时出现未知页面标识。")
+            guard seenNewPageIDs.insert(id).inserted else {
+                throw FreeNoteError.duplicatePageID(id)
             }
-            newIndexByOldIndex[oldIndex] = offset + 1
+            // Inserted pages intentionally have no old index. Existing outline ranges
+            // retain their old-page identity while their 1-based positions are remapped.
+            if let oldIndex = oldIndexByID[id] {
+                newIndexByOldIndex[oldIndex] = offset + 1
+            }
         }
 
         func remap(_ source: [OutlineNode], depth: Int) throws -> [OutlineNode] {
